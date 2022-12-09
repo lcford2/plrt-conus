@@ -1,0 +1,7 @@
+{
+    "ResOpsUS aggregated": {
+        "storage": "cubic meters",
+        "release": "cubic meters per day",
+        "inflow": "cubic meters per day"
+    }
+}
