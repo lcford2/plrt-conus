@@ -1,9 +1,10 @@
 import datetime
 
 import pandas as pd
-from prep_resopsus import AGG_FILE, PROJECT_ROOT
+from utils.config import FILES
 
-MODEL_READY_FILE = PROJECT_ROOT / "data" / "model_ready" / "resopsus.pickle"
+AGG_FILE = FILES["RESOPS_AGG"]
+MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
 
 
 def load_agg_data():

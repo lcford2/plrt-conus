@@ -1,10 +1,8 @@
-import pathlib
-
 import pandas as pd
+from utils.config import FILES, PDIRS
 
-RESOPS_PATH = pathlib.Path("~/data/ResOpsUS")
-PROJECT_ROOT = pathlib.Path("~/projects/plrt-conus")
-AGG_FILE = PROJECT_ROOT / "data" / "resopsus_agg" / "sri_metric.pickle"
+RESOPS_PATH = PDIRS["RESOPS_PATH"]
+AGG_FILE = FILES["RESOPS_AGG"]
 
 
 def combine_single_variable_tables():
