@@ -88,7 +88,7 @@ def make_model_ready_data(df):
     df["storage_x_inflow"] = df["storage_pre"] * df["net_inflow"]
 
     # calculate squared terms
-    df["release2"] = df["release_pre"] ** 2
+    df["release_pre2"] = df["release_pre"] ** 2
     df["inflow2"] = df["net_inflow"] ** 2
 
     spans = get_max_res_date_spans(df)
