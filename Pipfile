@@ -7,7 +7,6 @@ name = "pypi"
 pandas = "*"
 numpy = "*"
 scipy = "*"
-ipython = "*"
 
 [dev-packages]
 black = "*"
@@ -15,6 +14,8 @@ isort = "*"
 flake8 = "*"
 pre-commit = "*"
 commitizen = "*"
+ipdb = "*"
+ipython = "*"
 
 [requires]
 python_version = "3.10"
