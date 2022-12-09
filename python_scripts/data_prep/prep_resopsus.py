@@ -4,6 +4,7 @@ import pandas as pd
 
 RESOPS_PATH = pathlib.Path("~/data/ResOpsUS")
 PROJECT_ROOT = pathlib.Path("~/projects/plrt-conus")
+AGG_FILE = PROJECT_ROOT / "data" / "resopsus_agg" / "sri_metric.pickle"
 
 
 def combine_single_variable_tables():
@@ -51,16 +52,15 @@ def convert_units(records):
         columns={
             "inflow_cms": "inflow",
             "release_cms": "release",
-            "storage_cms": "storage",
+            "storage_mcm": "storage",
         }
     )
     return records
 
 
 def save_records(records):
-    file = PROJECT_ROOT / "data" / "resopsus_agg" / "sri_metric.pickle"
-    records.to_pickle(file)
-    print(f"Records stored in {file}")
+    records.to_pickle(AGG_FILE)
+    print(f"Records stored in {AGG_FILE}")
 
 
 if __name__ == "__main__":
