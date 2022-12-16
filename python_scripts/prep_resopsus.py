@@ -1,5 +1,6 @@
 import pandas as pd
 from utils.config import FILES, PDIRS
+from utils.io import write_feather
 
 RESOPS_PATH = PDIRS["RESOPS_PATH"]
 AGG_FILE = FILES["RESOPS_AGG"]
@@ -19,6 +20,9 @@ def combine_single_variable_tables():
         table_dir / "DAILY_AV_STORAGE_MCM.csv",
         index_col=0,
     )
+    inflow.index = pd.to_datetime(inflow.index, format="%Y-%m-%d")
+    release.index = pd.to_datetime(release.index, format="%Y-%m-%d")
+    storage.index = pd.to_datetime(storage.index, format="%Y-%m-%d")
 
     inflow = (
         inflow.melt(ignore_index=False, var_name="res_id", value_name="inflow_cms")
@@ -35,7 +39,6 @@ def combine_single_variable_tables():
         .reset_index()
         .set_index(["res_id", "date"])
     )
-
     return pd.concat([inflow, release, storage], axis=1)
 
 
@@ -56,12 +59,8 @@ def convert_units(records):
     return records
 
 
-def save_records(records):
-    records.to_pickle(AGG_FILE)
-    print(f"Records stored in {AGG_FILE}")
-
-
 if __name__ == "__main__":
     records = combine_single_variable_tables()
     records = convert_units(records)
-    save_records(records)
+    write_feather(records, AGG_FILE)
+    print(f"Records stored in {AGG_FILE}")

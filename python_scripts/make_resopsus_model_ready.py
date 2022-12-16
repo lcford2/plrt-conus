@@ -2,13 +2,10 @@ import datetime
 
 import pandas as pd
 from utils.config import FILES
+from utils.io import load_feather, write_feather
 
 AGG_FILE = FILES["RESOPS_AGG"]
 MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
-
-
-def load_agg_data():
-    return pd.read_pickle(AGG_FILE)
 
 
 def get_max_date_span(in_df):
@@ -91,6 +88,8 @@ def make_model_ready_data(df):
     df["release_pre2"] = df["release_pre"] ** 2
     df["inflow2"] = df["net_inflow"] ** 2
 
+    df = df.dropna(how="any", axis=0)
+
     spans = get_max_res_date_spans(df)
     trimmed_spans = filter_short_spans(spans, 5)
     trimmed_df = trim_data_to_span(df, trimmed_spans)
@@ -100,7 +99,52 @@ def make_model_ready_data(df):
     return trimmed_df
 
 
+def find_equal_not_equal_indices(df, occ, index):
+    equal = True
+    ddf = df.loc[index]
+    ddf = ddf.dropna(how="all", axis=1)
+    for col in ddf.columns:
+        if not (ddf[col] == ddf[col][0]).all():
+            equal = False
+    if equal:
+        return (index, 0)
+    else:
+        return (index, 1)
+
+
+def remove_duplicate_dates(df):
+    # get indices that occur more than once
+    occ = pd.Series(index=df.index, data=1)
+    occ = occ.groupby(["res_id", "date"]).sum()
+    occ = occ[occ > 1]
+
+    from joblib import Parallel, delayed
+
+    index_map = Parallel(n_jobs=-1, verbose=1)(
+        delayed(find_equal_not_equal_indices)(
+            df,
+            occ,
+            index,
+        )
+        for index in occ.index
+    )
+
+    all_equal = [x[0] for x in filter(lambda x: x[1] == 0, index_map)]
+    not_all_equal = [x[0] for x in filter(lambda x: x[1] == 1, index_map)]
+
+    #
+    all_equal_rows = df.loc[all_equal]
+    all_equal_new_rows = all_equal_rows.groupby(["res_id", "date"]).mean()
+    df = df.drop(all_equal)
+    df = pd.concat([df, all_equal_new_rows])
+
+    df = df[~df.index.get_level_values(0).isin([i[0] for i in not_all_equal])]
+    return df
+
+
 if __name__ == "__main__":
-    df = load_agg_data()
-    mdf = make_model_ready_data(df)
-    mdf.to_pickle(MODEL_READY_FILE)
+    df = load_feather(AGG_FILE, index_keys=("res_id", "date"))
+    df = remove_duplicate_dates(df)
+    df = make_model_ready_data(df)
+    write_feather(df, MODEL_READY_FILE)
+    print(f"Model ready data stored in {MODEL_READY_FILE}")

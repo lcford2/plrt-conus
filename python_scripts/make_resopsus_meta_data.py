@@ -1,12 +1,9 @@
 import pandas as pd
 from utils.config import FILES
+from utils.io import load_feather, write_feather
 
 MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
 MODEL_READY_META_FILE = FILES["MODEL_READY_META"]
-
-
-def load_model_ready_data():
-    return pd.read_pickle(MODEL_READY_FILE)
 
 
 def make_meta_data(df):
@@ -23,6 +20,7 @@ def make_meta_data(df):
 
 
 if __name__ == "__main__":
-    df = load_model_ready_data()
+    df = load_feather(MODEL_READY_FILE, index_keys=("res_id", "date"))
     meta = make_meta_data(df)
-    meta.to_pickle(MODEL_READY_META_FILE)
+    write_feather(meta, MODEL_READY_META_FILE)
+    print(f"Meta data stored in {MODEL_READY_META_FILE}")
