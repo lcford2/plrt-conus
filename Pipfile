@@ -9,6 +9,8 @@ numpy = "*"
 scipy = "*"
 scikit-learn = "*"
 py-plrt = "*"
+pyarrow = "*"
+tabulate = "*"
 
 [dev-packages]
 black = "*"
