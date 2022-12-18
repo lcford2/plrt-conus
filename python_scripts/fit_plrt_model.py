@@ -230,8 +230,8 @@ def pipeline(args):
         "release_roll7",
         "inflow_roll7",
         "storage_x_inflow",
-        # "inflow2",
-        # "release_pre2",
+        "inflow2",
+        "release_pre2",
     ]
 
     X_vars_tree = copy.copy(X_vars)
@@ -515,7 +515,7 @@ def pipeline(args):
     )
 
     # setup output parameters
-    model_set = "initial_models"
+    model_set = "squared_flows_models"
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
     foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
@@ -590,8 +590,8 @@ def simulate_plrt_model(
     track_df = pd.DataFrame(
         columns=["release", "storage"] + list(X_act.columns), index=X_act.index
     )
-    track_df[["const", "inflow", "inflow_roll7"]] = X_act[
-        ["const", "inflow", "inflow_roll7"]
+    track_df[["const", "inflow", "inflow_roll7", "inflow2"]] = X_act[
+        ["const", "inflow", "inflow_roll7", "inflow2"]
     ]
 
     # setup initial tracking information as well as find the start dates
@@ -723,6 +723,7 @@ def simul_reservoir(
         X_r = rdf.loc[loc, X_loc_vars]
         # add the interaction term
         X_r["storage_x_inflow"] = X_r["storage_pre"] * X_r["inflow"]
+        X_r["release_pre2"] = X_r["release_pre"] * X_r["release_pre"]
         # grab actual rt and max_sto values if they exist
         try:
             rts, max_sto = X_r[["rts", "max_sto"]]
