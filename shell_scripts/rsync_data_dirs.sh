@@ -14,5 +14,5 @@ fi
 
 remotehost="$username@$ip"
 # rsync directories
-rsync -azP data/ $remotehost:~/projects/plrt-conus/data
-rsync -azP results/ $remotehost:~/projects/plrt-conus/results
+rsync -azP ../data/ $remotehost:~/projects/plrt-conus/data
+rsync -azP ../results/ $remotehost:~/projects/plrt-conus/results
