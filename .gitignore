@@ -61,3 +61,6 @@ venv.bak/
 
 # data files
 data/*
+
+# result files
+results/**/*.pickle
