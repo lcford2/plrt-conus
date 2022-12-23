@@ -2,12 +2,14 @@ import os
 import pathlib
 
 __HOME = pathlib.Path(os.path.expanduser("~"))
+PROJECT_ROOT = __HOME / "projects" / "plrt-conus"
 
 PDIRS = {
     "RESOPS_PATH": __HOME / "data" / "ResOpsUS",
-    "PROJECT_ROOT": __HOME / "projects" / "plrt-conus",
-    "PROJECT_DATA": __HOME / "projects" / "plrt-conus" / "data",
-    "PROJECT_RESULTS": __HOME / "projects" / "plrt-conus" / "results",
+    "PROJECT_ROOT": PROJECT_ROOT,
+    "PROJECT_DATA": PROJECT_ROOT / "data",
+    "PROJECT_RESULTS": PROJECT_ROOT / "results",
+    "PROJECT_AGG_RESULTS": PROJECT_ROOT / "aggregated_results",
 }
 
 file_format = "feather"
