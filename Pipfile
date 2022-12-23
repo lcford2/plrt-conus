@@ -11,6 +11,8 @@ scikit-learn = "*"
 py-plrt = "*"
 pyarrow = "*"
 tabulate = "*"
+matplotlib = "*"
+seaborn = "*"
 
 [dev-packages]
 black = "*"
