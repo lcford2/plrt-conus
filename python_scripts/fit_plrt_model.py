@@ -515,7 +515,7 @@ def pipeline(args):
     )
 
     # setup output parameters
-    model_set = "squared_flows_models"
+    model_set = "parameter_sweep"
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
     foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
