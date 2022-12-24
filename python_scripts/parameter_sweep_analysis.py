@@ -4,7 +4,7 @@ import pathlib
 import pandas as pd
 from IPython import embed as II
 from utils.config import PDIRS
-from utils.io import load_results
+from utils.io import load_pickle, load_results, write_pickle
 from utils.metrics import get_nrmse, get_nse
 
 PSWEEP_RESULTS_DIR = PDIRS["PROJECT_RESULTS"] / "parameter_sweep"
@@ -31,7 +31,10 @@ def get_parameter_sweep_data(results, dataset="simmed"):
     return output
 
 
-def calculate_metrics(data):
+def calculate_metrics(data, recalc=False):
+    metrics_file = PDIRS["PROJECT_AGG_RESULTS"] / "parameter_sweep" / "metrics.pickle"
+    if not recalc and metrics_file.exists():
+        return load_pickle(metrics_file.as_posix())
     models = list(data.drop("actual", axis=1).columns)
     models = sorted(
         models, key=lambda x: (int(x.split("_")[0][2:]), float(x.split("_")[1][3:]))
@@ -54,6 +57,8 @@ def calculate_metrics(data):
             nrmse = m_nrmse.to_frame()
         else:
             nrmse[model] = m_nrmse
+
+    write_pickle({"nse": nse, "nrmse": nrmse}, metrics_file.as_posix())
     return nse, nrmse
 
 
@@ -65,4 +70,5 @@ if __name__ == "__main__":
     results = load_parameter_sweep_results()
     simmed_data = get_parameter_sweep_data(results, dataset="simmed")
     nse, nrmse = calculate_metrics(simmed_data)
-    plot_metric_box_plot(nse)
+    # plot_metric_box_plot(nse)
+    II()
