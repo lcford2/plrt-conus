@@ -1,10 +1,17 @@
+import os
 import pathlib
 
+__HOME = pathlib.Path(os.path.expanduser("~"))
+PROJECT_ROOT = __HOME / "projects" / "plrt-conus"
+
 PDIRS = {
-    "RESOPS_PATH": pathlib.Path("~/data/ResOpsUS"),
-    "PROJECT_ROOT": pathlib.Path("~/projects/plrt-conus"),
-    "PROJECT_DATA": pathlib.Path("~/projects/plrt-conus/data"),
+    "RESOPS_PATH": __HOME / "data" / "ResOpsUS",
+    "PROJECT_ROOT": PROJECT_ROOT,
+    "PROJECT_DATA": PROJECT_ROOT / "data",
+    "PROJECT_RESULTS": PROJECT_ROOT / "results",
+    "PROJECT_AGG_RESULTS": PROJECT_ROOT / "aggregated_results",
 }
+
 file_format = "feather"
 FILES = {
     "RESOPS_AGG": PDIRS["PROJECT_DATA"] / "resopsus_agg" / f"sri_metric.{file_format}",

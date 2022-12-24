@@ -1,0 +1,69 @@
+digraph tree {
+bgcolor="transparent"
+node [shape=rectangle, style="filled, rounded", color="black", fontname=helvetica] ;
+edge [fontname=helvetica] ;
+	"0" [label="mse = 0.115
+samples = 100.0%
+inflow &le; -0.437", fillcolor="#fbece2"]
+	"1" [label="mse = 0.070
+samples = 25.5%
+inflow_roll7 &le; -0.207", fillcolor="#fdf7f3"]
+	"2" [label="mse = 0.041
+samples = 24.4%
+         storage_pre: -0.014
+          release_pre: 0.018
+               inflow: 0.673
+             sto_diff: 0.126
+        release_roll7: 0.152
+         inflow_roll7: 0.202
+    storage_x_inflow: -0.114
+             inflow2: -0.002
+         release_pre2: 0.055
+                const: 0.088", fillcolor="#ffffff"]
+	"3" [label="mse = 0.560
+samples = 1.1%
+          storage_pre: 0.116
+          release_pre: 0.178
+               inflow: 0.302
+             sto_diff: 0.203
+        release_roll7: 0.215
+         inflow_roll7: 0.293
+    storage_x_inflow: -0.144
+              inflow2: 0.167
+         release_pre2: 0.353
+                const: 0.051", fillcolor="#e58139"]
+	"4" [label="mse = 0.126
+samples = 74.5%
+release_pre &le; -0.285", fillcolor="#faeade"]
+	"5" [label="mse = 0.050
+samples = 36.7%
+         storage_pre: -0.043
+          release_pre: 0.017
+               inflow: 0.563
+             sto_diff: 0.040
+        release_roll7: 0.201
+         inflow_roll7: 0.219
+    storage_x_inflow: -0.045
+              inflow2: 0.036
+        release_pre2: -0.030
+                const: 0.135", fillcolor="#fefcfb"]
+	"6" [label="mse = 0.193
+samples = 37.9%
+         storage_pre: -0.007
+          release_pre: 0.041
+               inflow: 0.982
+             sto_diff: 0.041
+        release_roll7: 0.234
+        inflow_roll7: -0.010
+    storage_x_inflow: -0.026
+              inflow2: 0.031
+         release_pre2: 0.038
+               const: -0.065", fillcolor="#f7dac5"]
+
+	"0" -> "1" [labeldistance=2.5, labelangle=45, headlabel="True"]
+	"1" -> "2"
+	"1" -> "3"
+	"0" -> "4" [labeldistance=2.5, labelangle=-45, headlabel="False"]
+	"4" -> "5"
+	"4" -> "6"
+}
