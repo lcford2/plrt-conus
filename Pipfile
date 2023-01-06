@@ -13,6 +13,8 @@ pyarrow = "*"
 tabulate = "*"
 matplotlib = "*"
 seaborn = "*"
+ipython = "*"
+pyqt5 = "*"
 
 [dev-packages]
 black = "*"
