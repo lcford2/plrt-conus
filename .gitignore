@@ -64,3 +64,6 @@ data/*
 
 # result files
 results/**/*.pickle
+
+# nohup files
+**/nohup.out
