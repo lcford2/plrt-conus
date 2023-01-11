@@ -21,7 +21,7 @@ import pandas as pd
 from IPython import embed as II
 from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
-from utils.utils import FILES, load_feather, my_groupby, time_function
+from utils.utils import FILES, PDIRS, load_feather, my_groupby, time_function
 
 
 def read_basin_data(basin: str) -> pd.DataFrame:
@@ -333,10 +333,6 @@ def pipeline(args):
         )
 
         time_function(model.fit)()
-        from IPython import embed as II
-
-        II()
-        sys.exit()
 
         params, groups = get_params_and_groups(X_train, model)
         # get the unique final leaves
@@ -545,7 +541,8 @@ def pipeline(args):
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
     foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
-    folderpath = pathlib.Path("..", "results", model_set, foldername)
+    folderpath = PDIRS["PROJECT_RESULTS"] / model_set / foldername
+    # folderpath = pathlib.Path("..", "results", model_set, foldername)
 
     # check if the directory exists and handle it
     if folderpath.is_dir():
@@ -555,13 +552,12 @@ def pipeline(args):
         # )
         response = "y"
         if response[0].lower() != "y":
-            folderpath = pathlib.Path(
-                "..",
-                "results",
-                model_set,
-                "_".join(
-                    [foldername, datetime.today().strftime("%Y%m%d_%H%M")]
-                ),
+            folderpath = (
+                PDIRS["PROJECT_RESULTS"]
+                / model_set
+                / "_".join(
+                    [foldername, datetime.today().strfime("%Y%m%d_%H%M")]
+                )
             )
             print(f"Saving at {folderpath} instead.")
             folderpath.mkdir()
