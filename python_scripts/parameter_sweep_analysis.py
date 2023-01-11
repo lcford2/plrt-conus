@@ -3,9 +3,14 @@ import pathlib
 
 import pandas as pd
 from IPython import embed as II
-from utils.config import PDIRS
-from utils.io import load_pickle, load_results, write_pickle
-from utils.metrics import get_nrmse, get_nse
+from utils import (
+    PDIRS,
+    get_nrmse,
+    get_nse,
+    load_pickle,
+    load_results,
+    write_pickle,
+)
 
 PSWEEP_RESULTS_DIR = PDIRS["PROJECT_RESULTS"] / "parameter_sweep"
 
@@ -32,12 +37,15 @@ def get_parameter_sweep_data(results, dataset="simmed"):
 
 
 def calculate_metrics(data, recalc=False):
-    metrics_file = PDIRS["PROJECT_AGG_RESULTS"] / "parameter_sweep" / "metrics.pickle"
+    metrics_file = (
+        PDIRS["PROJECT_AGG_RESULTS"] / "parameter_sweep" / "metrics.pickle"
+    )
     if not recalc and metrics_file.exists():
         return load_pickle(metrics_file.as_posix())
     models = list(data.drop("actual", axis=1).columns)
     models = sorted(
-        models, key=lambda x: (int(x.split("_")[0][2:]), float(x.split("_")[1][3:]))
+        models,
+        key=lambda x: (int(x.split("_")[0][2:]), float(x.split("_")[1][3:])),
     )
 
     nse = pd.DataFrame()
