@@ -1,7 +1,7 @@
 import datetime
 
 import pandas as pd
-from utils import FILES, load_feather, write_feather
+from utils.utils import FILES, load_feather, write_feather
 
 AGG_FILE = FILES["RESOPS_AGG"]
 MODEL_READY_FILE = FILES["MODEL_READY_DATA"]

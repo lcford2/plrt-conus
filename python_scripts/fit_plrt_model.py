@@ -21,7 +21,7 @@ import pandas as pd
 from IPython import embed as II
 from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
-from utils import FILES, load_feather, my_groupby, time_function
+from utils.utils import FILES, load_feather, my_groupby, time_function
 
 
 def read_basin_data(basin: str) -> pd.DataFrame:
@@ -333,6 +333,10 @@ def pipeline(args):
         )
 
         time_function(model.fit)()
+        from IPython import embed as II
+
+        II()
+        sys.exit()
 
         params, groups = get_params_and_groups(X_train, model)
         # get the unique final leaves
