@@ -2,7 +2,7 @@
 profile = "black"
 
 [tool.black]
-line-length = 90
+line-length = 80
 include = '\\.pyi?$'
 exclude = '''
 /(

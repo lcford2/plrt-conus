@@ -14,8 +14,12 @@ PDIRS = {
 
 file_format = "feather"
 FILES = {
-    "RESOPS_AGG": PDIRS["PROJECT_DATA"] / "resopsus_agg" / f"sri_metric.{file_format}",
-    "MODEL_READY_DATA": PDIRS["PROJECT_DATA"] / "model_ready" / f"resopsus.{file_format}",
+    "RESOPS_AGG": PDIRS["PROJECT_DATA"]
+    / "resopsus_agg"
+    / f"sri_metric.{file_format}",
+    "MODEL_READY_DATA": PDIRS["PROJECT_DATA"]
+    / "model_ready"
+    / f"resopsus.{file_format}",
     "MODEL_READY_META": PDIRS["PROJECT_DATA"]
     / "model_ready"
     / f"resopsus_meta.{file_format}",

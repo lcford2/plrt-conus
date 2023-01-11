@@ -1,8 +1,7 @@
 import datetime
 
 import pandas as pd
-from utils.config import FILES
-from utils.io import load_feather, write_feather
+from utils import FILES, load_feather, write_feather
 
 AGG_FILE = FILES["RESOPS_AGG"]
 MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
@@ -13,7 +12,9 @@ def get_max_date_span(in_df):
     dates = pd.to_datetime(in_df.index.get_level_values(1))
     df["date"] = dates
     df["mask"] = 1
-    df.loc[df["date"] - datetime.timedelta(days=1) == df["date"].shift(), "mask"] = 0
+    df.loc[
+        df["date"] - datetime.timedelta(days=1) == df["date"].shift(), "mask"
+    ] = 0
     df["mask"] = df["mask"].cumsum()
     spans = df.loc[df["mask"] == df["mask"].value_counts().idxmax(), "date"]
     return (spans.min(), spans.max())
@@ -60,7 +61,10 @@ def make_model_ready_data(df):
     df["all_vars"] = df["good_row"] & notna["inflow"]
     df = df.loc[df["good_row"], :].copy()
     df.index = pd.MultiIndex.from_tuples(
-        zip(df.index.get_level_values(0), pd.to_datetime(df.index.get_level_values(1))),
+        zip(
+            df.index.get_level_values(0),
+            pd.to_datetime(df.index.get_level_values(1)),
+        ),
         names=df.index.names,
     )
 
@@ -93,9 +97,8 @@ def make_model_ready_data(df):
     spans = get_max_res_date_spans(df)
     trimmed_spans = filter_short_spans(spans, 5)
     trimmed_df = trim_data_to_span(df, trimmed_spans)
-    print(
-        f"Trimming process removed {1 - trimmed_df.shape[0] / df.shape[0]:.1%} of records."
-    )
+    trimmed_percent = 1 - trimmed_df.shape[0] / df.shape[0]
+    print(f"Trimming process removed {trimmed_percent:.1%} of records.")
     return trimmed_df
 
 

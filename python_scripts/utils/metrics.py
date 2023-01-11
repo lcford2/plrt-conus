@@ -7,7 +7,9 @@ def nrmse(actual, model):
 
 def get_nse(df, actual, model, grouper=None):
     if grouper:
-        scores = df.groupby(grouper).apply(lambda x: r2_score(x[actual], x[model]))
+        scores = df.groupby(grouper).apply(
+            lambda x: r2_score(x[actual], x[model])
+        )
     else:
         scores = r2_score(df[actual], df[model])
     scores.name = "NSE"

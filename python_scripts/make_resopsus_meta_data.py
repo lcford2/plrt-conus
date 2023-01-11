@@ -1,6 +1,5 @@
 import pandas as pd
-from utils.config import FILES
-from utils.io import load_feather, write_feather
+from utils import FILES, load_feather, write_feather
 
 MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
 MODEL_READY_META_FILE = FILES["MODEL_READY_META"]
@@ -8,7 +7,9 @@ MODEL_READY_META_FILE = FILES["MODEL_READY_META"]
 
 def make_meta_data(df):
     means = df.groupby("res_id").mean()
-    meta = pd.DataFrame(index=means.index, columns=["rts", "max_sto", "rel_inf_corr"])
+    meta = pd.DataFrame(
+        index=means.index, columns=["rts", "max_sto", "rel_inf_corr"]
+    )
     meta["rts"] = means["storage"] / means["release"]
     meta["max_sto"] = df.groupby("res_id")["storage"].max()
     meta["rel_inf_corr"] = (

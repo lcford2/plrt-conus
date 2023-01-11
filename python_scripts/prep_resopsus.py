@@ -1,6 +1,5 @@
 import pandas as pd
-from utils.config import FILES, PDIRS
-from utils.io import write_feather
+from utils import FILES, PDIRS, write_feather
 
 RESOPS_PATH = PDIRS["RESOPS_PATH"]
 AGG_FILE = FILES["RESOPS_AGG"]
@@ -25,17 +24,23 @@ def combine_single_variable_tables():
     storage.index = pd.to_datetime(storage.index, format="%Y-%m-%d")
 
     inflow = (
-        inflow.melt(ignore_index=False, var_name="res_id", value_name="inflow_cms")
+        inflow.melt(
+            ignore_index=False, var_name="res_id", value_name="inflow_cms"
+        )
         .reset_index()
         .set_index(["res_id", "date"])
     )
     release = (
-        release.melt(ignore_index=False, var_name="res_id", value_name="release_cms")
+        release.melt(
+            ignore_index=False, var_name="res_id", value_name="release_cms"
+        )
         .reset_index()
         .set_index(["res_id", "date"])
     )
     storage = (
-        storage.melt(ignore_index=False, var_name="res_id", value_name="storage_mcm")
+        storage.melt(
+            ignore_index=False, var_name="res_id", value_name="storage_mcm"
+        )
         .reset_index()
         .set_index(["res_id", "date"])
     )

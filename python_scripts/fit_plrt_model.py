@@ -21,28 +21,31 @@ import pandas as pd
 from IPython import embed as II
 from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
-from utils.config import FILES
-from utils.io import load_feather
-from utils.timing_function import time_function
+from utils import FILES, load_feather, my_groupby, time_function
 
 
 def read_basin_data(basin: str) -> pd.DataFrame:
     data_locs = {
         "upper_col": {
-            "ready": "../upper_colorado_data/model_ready_data/upper_col_data_net_inflow.csv",
-            "raw": "../upper_colorado_data/hydrodata_data/req_upper_col_data.csv",
+            "ready": "../upper_colorado_data/model_ready_data/"
+            "upper_col_data_net_inflow.csv",
+            "raw": "../upper_colorado_data/hydrodata_data/"
+            "req_upper_col_data.csv",
         },
         "pnw": {
             "ready": "../pnw_data/model_ready_data/pnw_data_net_inflow.csv",
             "raw": "../pnw_data/dam_data/*_data/*.csv",
         },
         "lower_col": {
-            # "ready": "../lower_col_data/model_ready_data/lower_col_data_net_inflow.csv",
-            "ready": "../lower_col_data/model_ready_data/lower_col_data_net_inflow_new_hoover.csv",
+            # "ready": "../lower_col_data/model_ready_data/" \
+            # "lower_col_data_net_inflow.csv",
+            "ready": "../lower_col_data/model_ready_data/"
+            "lower_col_data_net_inflow_new_hoover.csv",
             "raw": "../lower_col_data/lower_col_dam_data.csv",
         },
         "missouri": {
-            "ready": "../missouri_data/model_ready_data/missouri_data_net_inflow.csv",
+            "ready": "../missouri_data/model_ready_data/"
+            "missouri_data_net_inflow.csv",
             "raw": "../missouri_data/hydromet_data/*.csv",
         },
         "tva": {"ready": "../csv/tva_model_ready_data.csv"},
@@ -111,7 +114,9 @@ def get_max_date_span(in_df):
     df = pd.DataFrame()
     df["date"] = in_df.index.get_level_values(1)
     df["mask"] = 1
-    df.loc[df["date"] - np.timedelta64(1, "D") == df["date"].shift(), "mask"] = 0
+    df.loc[
+        df["date"] - np.timedelta64(1, "D") == df["date"].shift(), "mask"
+    ] = 0
     df["mask"] = df["mask"].cumsum()
     span = df.loc[df["mask"] == df["mask"].value_counts().idxmax(), "date"]
     return (span.min(), span.max())
@@ -129,11 +134,9 @@ def load_resopsus_data():
 @time_function
 def prep_data(df):
     grouper = df.index.get_level_values(0)
-    std_data = df.groupby(grouper, group_keys=False).apply(
-        lambda x: (x - x.mean()) / x.std()
-    )
-    means = df.groupby(grouper, group_keys=False).mean()
-    std = df.groupby(grouper, group_keys=False).std()
+    std_data = my_groupby(df, grouper).apply(lambda x: (x - x.mean()) / x.std())
+    means = my_groupby(df, grouper).mean()
+    std = my_groupby(df, grouper).std()
     columns = [
         "release_pre",
         "storage",
@@ -153,9 +156,12 @@ def prep_data(df):
 
 
 def split_train_test_dt(index, date, level=None, keep=0):
-    # cannot check truthy here because level can be integer 0, which is equivalent to False
+    # cannot check truthy here because level can be integer 0,
+    # which is equivalent to False
     if level is not None:
-        test = index[index.get_level_values(level) >= date - timedelta(days=keep)]
+        test = index[
+            index.get_level_values(level) >= date - timedelta(days=keep)
+        ]
         train = index[index.get_level_values(level) < date]
     else:
         test = index[index >= date]
@@ -198,8 +204,8 @@ def pipeline(args):
 
     df, meta = load_resopsus_data()
 
-    lower_bounds = df.groupby(df.index.get_level_values(0), group_keys=False).min()
-    upper_bounds = df.groupby(df.index.get_level_values(0), group_keys=False).max()
+    lower_bounds = my_groupby(df, df.index.get_level_values(0)).min()
+    upper_bounds = my_groupby(df, df.index.get_level_values(0)).max()
 
     df = df.sort_index()
     reservoirs = meta.index
@@ -253,8 +259,12 @@ def pipeline(args):
     test_res = [i for i in reservoirs if i not in train_res]
 
     print("Getting training and testing data set")
-    X_train = X.loc[X.index.get_level_values(0).isin(train_res), X_vars].sort_index()
-    X_test = X.loc[X.index.get_level_values(0).isin(test_res), X_vars].sort_index()
+    X_train = X.loc[
+        X.index.get_level_values(0).isin(train_res), X_vars
+    ].sort_index()
+    X_test = X.loc[
+        X.index.get_level_values(0).isin(test_res), X_vars
+    ].sort_index()
     X_train["const"] = 1
     X_test["const"] = 1
     X_vars.insert(0, "const")
@@ -271,17 +281,23 @@ def pipeline(args):
     add_tree_vars = ["rts", "max_sto"]
 
     for tree_var in add_tree_vars:
-        # train_values = [meta.loc[i, tree_var] for i in X_train.index.get_level_values(0)]
-        # test_values = [meta.loc[i, tree_var] for i in X_test.index.get_level_values(0)]
+        # train_values = [
+        #     meta.loc[i, tree_var] for i in X_train.index.get_level_values(0)
+        # ]
+        # test_values = [
+        #     meta.loc[i, tree_var] for i in X_test.index.get_level_values(0)
+        # ]
         train_values = []
         for res in train_res:
             train_values.extend(
-                [meta.loc[res, tree_var]] * X_train.loc[pd.IndexSlice[res, :]].shape[0]
+                [meta.loc[res, tree_var]]
+                * X_train.loc[pd.IndexSlice[res, :]].shape[0]
             )
         test_values = []
         for res in test_res:
             test_values.extend(
-                [meta.loc[res, tree_var]] * X_test.loc[pd.IndexSlice[res, :]].shape[0]
+                [meta.loc[res, tree_var]]
+                * X_test.loc[pd.IndexSlice[res, :]].shape[0]
             )
         X_train[tree_var] = train_values
         X_test[tree_var] = test_values
@@ -383,7 +399,8 @@ def pipeline(args):
         + means.loc[train_res, "release"]
     ).T.stack()
     y_test_act = (
-        y_test.unstack().T * std.loc[test_res, "release"] + means.loc[test_res, "release"]
+        y_test.unstack().T * std.loc[test_res, "release"]
+        + means.loc[test_res, "release"]
     ).T.stack()
 
     fitted_act = (
@@ -391,7 +408,8 @@ def pipeline(args):
         + means.loc[train_res, "release"]
     ).T.stack()
     preds_act = (
-        preds.unstack().T * std.loc[test_res, "release"] + means.loc[test_res, "release"]
+        preds.unstack().T * std.loc[test_res, "release"]
+        + means.loc[test_res, "release"]
     ).T.stack()
 
     y_test_sim = y_test_act.loc[simmed.index]
@@ -408,28 +426,26 @@ def pipeline(args):
     train_time_grouper = y_train_act.index.get_level_values(1)
     test_time_grouper = y_test_act.index.get_level_values(1)
 
-    y_train_mean = y_train_act.groupby(train_res_grouper, group_keys=False).mean()
-    y_test_mean = y_test_act.groupby(test_res_grouper, group_keys=False).mean()
-    fmean = fitted_act.groupby(train_res_grouper, group_keys=False).mean()
-    pmean = preds_act.groupby(test_res_grouper, group_keys=False).mean()
-    smean = simmed.groupby(simmed.index.get_level_values(0), group_keys=False).mean()
+    y_train_mean = my_groupby(y_train_act, train_res_grouper).mean()
+    y_test_mean = my_groupby(y_test_act, test_res_grouper).mean()
+    fmean = my_groupby(fitted_act, train_res_grouper).mean()
+    pmean = my_groupby(preds_act, test_res_grouper).mean()
+    smean = my_groupby(simmed, simmed.index.get_level_values(0)).mean()
 
     f_bias = fmean - y_train_mean
     f_bias_month = (
-        fitted_act.groupby(train_time_grouper.month, group_keys=False).mean()
-        - y_train_act.groupby(train_time_grouper.month, group_keys=False).mean()
+        my_groupby(fitted_act, train_time_grouper.month).mean()
+        - my_groupby(y_train_act, train_time_grouper.month).mean()
     )
     p_bias = pmean - y_test_mean
     p_bias_month = (
-        preds_act.groupby(test_time_grouper.month, group_keys=False).mean()
-        - y_test_act.groupby(test_time_grouper.month, group_keys=False).mean()
+        my_groupby(preds_act, test_time_grouper.month).mean()
+        - my_groupby(y_test_act, test_time_grouper.month).mean()
     )
     s_bias = smean - y_test_mean
     s_bias_month = (
-        simmed.groupby(simmed.index.get_level_values(1).month, group_keys=False).mean()
-        - y_test_sim.groupby(
-            simmed.index.get_level_values(1).month, group_keys=False
-        ).mean()
+        my_groupby(simmed, simmed.index.get_level_values(1).month).mean()
+        - my_groupby(y_test_sim, simmed.index.get_level_values(1).month).mean()
     )
 
     results = {
@@ -456,30 +472,32 @@ def pipeline(args):
     test_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE"])
     simmed_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE"])
 
-    train_res_scores["NSE"] = train_data.groupby(
-        train_res_grouper, group_keys=False
-    ).apply(lambda x: r2_score(x["actual"], x["model"]))
-    train_res_scores["RMSE"] = train_data.groupby(
-        train_res_grouper, group_keys=False
-    ).apply(lambda x: mean_squared_error(x["actual"], x["model"], squared=False))
+    train_res_scores["NSE"] = my_groupby(train_data, train_res_grouper).apply(
+        lambda x: r2_score(x["actual"], x["model"])
+    )
+    train_res_scores["RMSE"] = my_groupby(train_data, train_res_grouper).apply(
+        lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
+    )
 
     results["train_res_scores"] = train_res_scores
 
-    test_res_scores["NSE"] = test_data.groupby(test_res_grouper, group_keys=False).apply(
+    test_res_scores["NSE"] = my_groupby(test_data, test_res_grouper).apply(
         lambda x: r2_score(x["actual"], x["model"])
     )
-    test_res_scores["RMSE"] = test_data.groupby(test_res_grouper, group_keys=False).apply(
+    test_res_scores["RMSE"] = my_groupby(test_data, test_res_grouper).apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
     )
 
     results["test_res_scores"] = test_res_scores
     simmed_res_grouper = simmed_data.index.get_level_values(0)
-    simmed_res_scores["NSE"] = simmed_data.groupby(
-        simmed_res_grouper, group_keys=False
+    simmed_res_scores["NSE"] = my_groupby(
+        simmed_data, simmed_res_grouper
     ).apply(lambda x: r2_score(x["actual"], x["model"]))
-    simmed_res_scores["RMSE"] = simmed_data.groupby(
-        simmed_res_grouper, group_keys=False
-    ).apply(lambda x: mean_squared_error(x["actual"], x["model"], squared=False))
+    simmed_res_scores["RMSE"] = my_groupby(
+        simmed_data, simmed_res_grouper
+    ).apply(
+        lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
+    )
 
     results["simmed_res_scores"] = simmed_res_scores
 
@@ -492,25 +510,29 @@ def pipeline(args):
     # )
     print(simmed_res_scores["NSE"].describe().to_markdown(floatfmt="0.3f"))
 
-    train_quant, train_bins = pd.qcut(train_data["actual"], 3, labels=False, retbins=True)
+    train_quant, train_bins = pd.qcut(
+        train_data["actual"], 3, labels=False, retbins=True
+    )
     quant_scores = pd.DataFrame(index=[0, 1, 2], columns=["NSE", "RMSE"])
     train_data["bin"] = train_quant
 
-    quant_scores["NSE"] = train_data.groupby("bin", group_keys=False).apply(
+    quant_scores["NSE"] = my_groupby(train_data, "bin").apply(
         lambda x: r2_score(x["actual"], x["model"])
     )
-    quant_scores["RMSE"] = train_data.groupby("bin", group_keys=False).apply(
+    quant_scores["RMSE"] = my_groupby(train_data, "bin").apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
     )
 
-    test_quant, test_bins = pd.qcut(test_data["actual"], 3, labels=False, retbins=True)
+    test_quant, test_bins = pd.qcut(
+        test_data["actual"], 3, labels=False, retbins=True
+    )
     quant_scores = pd.DataFrame(index=[0, 1, 2], columns=["NSE", "RMSE"])
     test_data["bin"] = test_quant
 
-    quant_scores["NSE"] = test_data.groupby("bin", group_keys=False).apply(
+    quant_scores["NSE"] = my_groupby(test_data, "bin").apply(
         lambda x: r2_score(x["actual"], x["model"])
     )
-    quant_scores["RMSE"] = test_data.groupby("bin", group_keys=False).apply(
+    quant_scores["RMSE"] = my_groupby(test_data, "bin").apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
     )
 
@@ -524,7 +546,8 @@ def pipeline(args):
     # check if the directory exists and handle it
     if folderpath.is_dir():
         # response = input(
-        #    f"{folderpath} already exists. Are you sure you want to overwrite its contents? [y/N] "
+        #    f"{folderpath} already exists. Are you sure you want to " \
+        #       "overwrite its contents? [y/N] "
         # )
         response = "y"
         if response[0].lower() != "y":
@@ -532,7 +555,9 @@ def pipeline(args):
                 "..",
                 "results",
                 model_set,
-                "_".join([foldername, datetime.today().strftime("%Y%m%d_%H%M")]),
+                "_".join(
+                    [foldername, datetime.today().strftime("%Y%m%d_%H%M")]
+                ),
             )
             print(f"Saving at {folderpath} instead.")
             folderpath.mkdir()
@@ -602,14 +627,14 @@ def simulate_plrt_model(
         rdf = X_act.loc[idx[res, :], :]
         # rolling 7 day means so we need 7 days of actual values
         first_seven = rdf.index.get_level_values(1).values[:7]
-        track_df.loc[idx[res, first_seven], ["release_pre", "storage_pre"]] = X_act.loc[
+        track_df.loc[
             idx[res, first_seven], ["release_pre", "storage_pre"]
-        ]
+        ] = X_act.loc[idx[res, first_seven], ["release_pre", "storage_pre"]]
         start_dates[res] = first_seven[-1]
 
     # find the initial rolling release and storage values
     init_rolling = (
-        track_df.groupby(track_df.index.get_level_values(0), group_keys=False)[
+        my_groupby(track_df, track_df.index.get_level_values(0))[
             ["storage_pre", "release_pre"]
         ]
         .rolling(7)
@@ -692,7 +717,8 @@ def simul_reservoir(
     rdf = track_df.loc[idx[res, :], :].copy(deep=True)
     # cut off initial 6 values as we do not have a roling release for those
     dates = list(rdf.index.get_level_values(1).values)[6:]
-    # need to identify the end date so we can know to stop adding values to track_df
+    # need to identify the end date so we can know to stop adding
+    # values to track_df
     end_date = dates[-1]
 
     if assim == "weekly":
@@ -715,7 +741,9 @@ def simul_reservoir(
         reg_vars = reg_vars[:cindex] + reg_vars[index_after_const:]
 
     roll_storage = pd.Series(index=rdf.index, dtype=np.float64)
-    roll_storage.loc[idx[res, dates[0]]] = rdf.loc[idx[res, dates[0]], "storage_roll7"]
+    roll_storage.loc[idx[res, dates[0]]] = rdf.loc[
+        idx[res, dates[0]], "storage_roll7"
+    ]
 
     for date in dates:
         loc = idx[res, date]
@@ -753,7 +781,9 @@ def simul_reservoir(
             X_r_val = X_r[model.feats].values
             X_r_val = X_r_val.reshape(1, X_r_val.size)
             release = model.predict(X_r_val)[0]
-            # release = model.predict(X_r[model.feats].values.reshape(1, X_r.size))[0]
+            # release = model.predict(X_r[model.feats].values.reshape(
+            #     1, X_r.size
+            # ))[0]
         else:
             release = X_r[X_loc_vars] @ model
 
@@ -764,9 +794,13 @@ def simul_reservoir(
         # else:
         #     II()
         # get release back to actual space
-        release_act = release * std.loc[res, "release"] + means.loc[res, "release"]
+        release_act = (
+            release * std.loc[res, "release"] + means.loc[res, "release"]
+        )
         # calculate storage from mass balance
-        storage = rdf.loc[loc, "storage_pre"] + rdf.loc[loc, "inflow"] - release_act
+        storage = (
+            rdf.loc[loc, "storage_pre"] + rdf.loc[loc, "inflow"] - release_act
+        )
         # keep storage and release within bounds
         if storage > upper_bounds.loc[res, "storage"]:
             storage = upper_bounds.loc[res, "storage"]
@@ -785,10 +819,14 @@ def simul_reservoir(
         # if we are not at the last day, store values needed for tomorrow
         if date != end_date:
             tomorrow = date + np.timedelta64(1, "D")
-            prev_seven = pd.date_range(tomorrow - np.timedelta64(6, "D"), tomorrow)
+            prev_seven = pd.date_range(
+                tomorrow - np.timedelta64(6, "D"), tomorrow
+            )
 
             if assim:
-                offset = ((date - start_date) / np.timedelta64(1, "D")) % assim_shift
+                offset = (
+                    (date - start_date) / np.timedelta64(1, "D")
+                ) % assim_shift
                 if offset == 0:
                     rdf.loc[idx[res, tomorrow], "storage_pre"] = track_df.loc[
                         idx[res, tomorrow], "storage_pre"
@@ -857,7 +895,14 @@ def parse_args(arg_list=None):
     parser.add_argument(
         "--assim",
         default=None,
-        choices=("daily", "weekly", "monthly", "seasonally", "semi-annually", "yearly"),
+        choices=(
+            "daily",
+            "weekly",
+            "monthly",
+            "seasonally",
+            "semi-annually",
+            "yearly",
+        ),
         help="Frequency at which to assimilate observed storage and release values",
     )
     parser.add_argument(
