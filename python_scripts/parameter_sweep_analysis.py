@@ -319,7 +319,7 @@ def plot_training_testing_map(results):
 
     test_res = test_df.index.get_level_values("res_id").unique().astype(int)
     train_res = train_df.index.get_level_values("res_id").unique().astype(int)
-    all_res = all_resops["res_id"].astype(int)
+    all_res = all_resops["res_id"].unique().astype(int)
     left_out_res = [
         i for i in all_res if i not in test_res and i not in train_res
     ]
