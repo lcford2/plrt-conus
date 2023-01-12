@@ -1,19 +1,17 @@
 import glob
 import pathlib
 
+import geopandas as gpd
 import matplotlib.pyplot as plt
-from mpl_toolkits.basemap import Basemap
+import numpy as np
 import pandas as pd
 import seaborn as sns
-import numpy as np
-import geopandas as gpd
 from IPython import embed as II
-
-from utils.config import PDIRS, FILES, GENERAL_DATA_DIR
+from mpl_toolkits.basemap import Basemap
+from utils.config import FILES, GENERAL_DATA_DIR, PDIRS
+from utils.io import load_feather, load_pickle, load_results, write_pickle
 from utils.metrics import get_nrmse, get_nse
-from utils.io import load_pickle, load_results, write_pickle, load_feather
 from utils.plot_tools import get_pretty_var_name
-
 
 PSWEEP_RESULTS_DIR = PDIRS["PROJECT_RESULTS"] / "parameter_sweep"
 GIS_DIR = GENERAL_DATA_DIR / "GIS"
@@ -292,9 +290,7 @@ def setup_map(ax=None, coords=None, other_bound=None):
 def get_contiguous_wbds():
     WBD_DIR = GIS_DIR / "WBD"
     file = "WBD_{:02}_HU2_Shape/Shape/WBDHU2"
-    bounds_files = [
-        (WBD_DIR / file.format(i)).as_posix() for i in range(1, 19)
-    ]
+    bounds_files = [(WBD_DIR / file.format(i)).as_posix() for i in range(1, 19)]
     return bounds_files
 
 
@@ -302,9 +298,7 @@ def plot_training_testing_map(results):
     fig, ax = plt.subplots(1, 1)
     wbds = get_contiguous_wbds()
 
-    other_bounds = [
-        (b, "k") for b in wbds 
-    ]
+    other_bounds = [(b, "k") for b in wbds]
 
     west, south, east, north = (
         -127.441406,
@@ -312,16 +306,23 @@ def plot_training_testing_map(results):
         -66.093750,
         53.382373,
     )
-    m = setup_map(ax=ax, coords=[west, south, east, north], other_bound=other_bounds)
+    m = setup_map(
+        ax=ax, coords=[west, south, east, north], other_bound=other_bounds
+    )
     grand = gpd.read_file(
         GENERAL_DATA_DIR / "GRanD Databasev1.3" / "GRanD_reservoirs_v1_3.shp"
     )
 
     test_df = get_parameter_sweep_data(results, dataset="test")
     train_df = get_parameter_sweep_data(results, dataset="train")
+    all_resops = load_feather(FILES["RESOPS_AGG"])
 
     test_res = test_df.index.get_level_values("res_id").unique().astype(int)
     train_res = train_df.index.get_level_values("res_id").unique().astype(int)
+    all_res = all_resops["res_id"].astype(int)
+    left_out_res = [
+        i for i in all_res if i not in test_res and i not in train_res
+    ]
 
     test_coords = [
         (row.LONG_DD, row.LAT_DD)
@@ -331,15 +332,29 @@ def plot_training_testing_map(results):
         (row.LONG_DD, row.LAT_DD)
         for i, row in grand[grand["GRAND_ID"].isin(train_res)].iterrows()
     ]
+    left_out_coords = [
+        (row.LONG_DD, row.LAT_DD)
+        for i, row in grand[grand["GRAND_ID"].isin(left_out_res)].iterrows()
+    ]
 
     train_x, train_y = list(zip(*train_coords))
     test_x, test_y = list(zip(*test_coords))
+    left_out_x, left_out_y = list(zip(*left_out_coords))
 
     m.scatter(
         train_x, train_y, latlon=True, label="Training", marker="v", zorder=4
     )
     m.scatter(
         test_x, test_y, latlon=True, label="Testing", marker="v", zorder=4
+    )
+    m.scatter(
+        left_out_x,
+        left_out_y,
+        latlon=True,
+        label="Excluded",
+        marker="v",
+        zorder=3,
+        alpha=0.8,
     )
 
     ax.legend(loc="lower left")
