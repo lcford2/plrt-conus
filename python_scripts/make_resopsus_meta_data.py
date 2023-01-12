@@ -1,5 +1,6 @@
 import pandas as pd
-from utils.utils import FILES, load_feather, write_feather
+from utils.config import FILES
+from utils.io import load_feather, write_feather
 
 MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
 MODEL_READY_META_FILE = FILES["MODEL_READY_META"]

@@ -1,5 +1,6 @@
 import pandas as pd
-from utils.utils import FILES, PDIRS, write_feather
+from utils.config import FILES, PDIRS
+from utils.io import write_feather
 
 RESOPS_PATH = PDIRS["RESOPS_PATH"]
 AGG_FILE = FILES["RESOPS_AGG"]

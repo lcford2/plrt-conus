@@ -15,6 +15,7 @@ matplotlib = "*"
 seaborn = "*"
 ipython = "*"
 pyqt5 = "*"
+geopandas = "*"
 
 [dev-packages]
 black = "*"

@@ -5,21 +5,28 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from IPython import embed as II
-from utils.utils import (
-    PDIRS,
-    get_nrmse,
-    get_nse,
-    load_pickle,
-    load_results,
-    write_pickle,
-)
+from utils.config import PDIRS
+from utils.metrics import get_nrmse, get_nse
+from utils.io import load_pickle, load_results, write_pickle, load_feather
+
 
 PSWEEP_RESULTS_DIR = PDIRS["PROJECT_RESULTS"] / "parameter_sweep"
 
 
-def load_parameter_sweep_results():
-    directories = glob.glob(f"{PSWEEP_RESULTS_DIR.as_posix()}/*")
-    return {pathlib.Path(d).name: load_results(d) for d in directories}
+def load_grand_names():
+    df = load_feather(
+        (PDIRS["PROJECT_DATA"] / "grand_names.feather").as_posix(),
+    )
+    return df.set_index("GRAND_ID").drop("index", axis=1)
+
+
+def load_parameter_sweep_results(model_dir=None):
+    if model_dir:
+        model_dir = pathlib.Path(model_dir)
+        return {model_dir.name: load_results(model_dir.as_posix())}
+    else:
+        directories = glob.glob(f"{PSWEEP_RESULTS_DIR.as_posix()}/*")
+        return {pathlib.Path(d).name: load_results(d) for d in directories}
 
 
 def get_parameter_sweep_data(results, dataset="simmed"):
@@ -100,12 +107,48 @@ def plot_metric_box_plot(metric_df, metric):
     plt.show()
 
 
+def plot_single_model_metrics(df):
+    grand_names = load_grand_names()
+    test_nse = get_nse(df, "actual", "test", grouper="res_id")
+    test_nrmse = get_nrmse(df, "actual", "test", grouper="res_id")
+    simmed_nse = get_nse(df, "actual", "simmed", grouper="res_id")
+    simmed_nrmse = get_nrmse(df, "actual", "simmed", grouper="res_id")
+
+    nse = pd.DataFrame.from_dict({
+        "test": test_nse,
+        "simmed": simmed_nse
+    })
+    nrmse = pd.DataFrame.from_dict({
+        "test": test_nrmse,
+        "simmed": simmed_nrmse
+    })
+
+    nse = nse.reset_index().melt(id_vars="res_id")
+    nrmse = nrmse.reset_index().melt(id_vars="res_id")
+    nse["metric"] = "nse"
+    nrmse["metric"] = "nrmse"
+
+    metrics = pd.concat([nse, nrmse])
+    metrics["res_name"] = metrics["res_id"].apply(
+        lambda x: grand_names.loc[int(x), "RES_NAME"]
+    )
+    II()
+
+
 if __name__ == "__main__":
     # plt.style.use("ggplot")
     sns.set_theme(context="notebook", palette="Set2")
-    results = load_parameter_sweep_results()
-    simmed_data = get_parameter_sweep_data(results, dataset="simmed")
-    metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
-    nse, rmse = metrics["nse"], metrics["nrmse"]
-    II()
-    plot_metric_box_plot(nse, "NSE")
+    # results = load_parameter_sweep_results()
+    # simmed_data = get_parameter_sweep_data(results, dataset="simmed")
+    # metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
+    # nse, rmse = metrics["nse"], metrics["nrmse"]
+    # plot_metric_box_plot(nse, "NSE")
+
+    model = "TD3_MSS0.04"
+    results = load_parameter_sweep_results(
+        PSWEEP_RESULTS_DIR / model
+    )
+    df = get_parameter_sweep_data(results, dataset="simmed")
+    df = df.rename(columns={model: "simmed"})
+    df["test"] = get_parameter_sweep_data(results, dataset="test")[model]
+    plot_single_model_metrics(df)

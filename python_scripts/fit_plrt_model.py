@@ -21,7 +21,10 @@ import pandas as pd
 from IPython import embed as II
 from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
-from utils.utils import FILES, PDIRS, load_feather, my_groupby, time_function
+from utils.config import FILES, PDIRS
+from utils.io import load_feather
+from utils.utils import my_groupby
+from utils.timing_function import time_function
 
 
 def read_basin_data(basin: str) -> pd.DataFrame:

@@ -67,3 +67,7 @@ results/**/*.pickle
 
 # nohup files
 **/nohup.out
+
+# direnv
+.envrc
+.envrc.cache
