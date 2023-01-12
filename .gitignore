@@ -61,6 +61,7 @@ venv.bak/
 
 # data files
 data/*
+!data/grand_names.feather
 
 # result files
 results/**/*.pickle
