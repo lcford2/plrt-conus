@@ -3,6 +3,7 @@ import pathlib
 
 __HOME = pathlib.Path(os.path.expanduser("~"))
 PROJECT_ROOT = __HOME / "projects" / "plrt-conus"
+GENERAL_DATA_DIR = __HOME / "data"
 
 PDIRS = {
     "RESOPS_PATH": __HOME / "data" / "ResOpsUS",

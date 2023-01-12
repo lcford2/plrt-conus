@@ -16,6 +16,7 @@ seaborn = "*"
 ipython = "*"
 pyqt5 = "*"
 geopandas = "*"
+basemap = "*"
 
 [dev-packages]
 black = "*"
