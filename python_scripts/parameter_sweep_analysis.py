@@ -8,6 +8,7 @@ from IPython import embed as II
 from utils.config import PDIRS
 from utils.metrics import get_nrmse, get_nse
 from utils.io import load_pickle, load_results, write_pickle, load_feather
+from utils.plot_tools import get_pretty_var_name
 
 
 PSWEEP_RESULTS_DIR = PDIRS["PROJECT_RESULTS"] / "parameter_sweep"
@@ -132,7 +133,87 @@ def plot_single_model_metrics(df):
     metrics["res_name"] = metrics["res_id"].apply(
         lambda x: grand_names.loc[int(x), "RES_NAME"]
     )
-    II()
+    metrics = metrics.sort_values(by=["metric", "value"])
+
+    metrics["variable"] = metrics["variable"].replace(
+        {"test": "Testing", "simmed": "Simulation"}
+    )
+
+    fg = sns.catplot(
+        data=metrics,
+        x="res_name",
+        y="value",
+        row="metric",
+        hue="variable",
+        kind="bar",
+        legend=False,
+        sharey=False
+    )
+    axes = fg.axes.flatten()
+    axes[0].legend(loc="best")
+    axes[1].tick_params(
+        axis="x",
+        labelrotation=90
+    )
+
+    axes[1].set_xticklabels(
+        axes[1].get_xticklabels(),
+        rotation=60,
+        ha="right"
+    )
+    fg.set_titles("")
+    axes[0].set_ylabel("NRMSE")
+    axes[1].set_ylabel("NSE")
+    axes[1].set_xlabel("")
+
+    fg.figure.align_ylabels()
+    
+    plt.show()
+
+
+def compare_training_testing_data(results):
+    meta = load_feather(FILES["MODEL_READY_META"])
+    meta = meta.set_index("res_id")
+
+    mr_data = load_feather(FILES["MODEL_READY_DATA"]).set_index(
+        ["res_id", "date"]
+    )
+
+    test_df = get_parameter_sweep_data(results, dataset="test")
+
+    test_res = test_df.index.get_level_values("res_id").unique()
+    
+    meta["Data Set"] = "Train"
+    meta.loc[test_res, "Data Set"] = "Test"
+    meta_melt = meta.melt(id_vars=["Data Set"])
+
+    mr_data["Data Set"] = "Train"
+    mr_data.loc[pd.IndexSlice[test_res, :], "Data Set"] = "Test"
+    mr_data = mr_data[["release_pre", "inflow", "storage_pre", "Data Set"]]
+    mr_data = mr_data.melt(id_vars=["Data Set"])
+
+    meta_melt = pd.concat([meta_melt, mr_data])
+
+    meta_melt["variable"] = meta_melt["variable"].apply(
+        lambda x: get_pretty_var_name(x, math=True)
+    )
+    fg = sns.displot(
+        data=meta_melt,
+        x="value",
+        col="variable",
+        hue="Data Set",
+        kind="ecdf",
+        col_wrap=3,
+        facet_kws={
+            "sharex": False, 
+            "sharey": False, 
+            "legend_out": False
+        },
+    )
+    fg.set_titles("{col_name}")
+    plt.show()
+
+
 
 
 if __name__ == "__main__":
