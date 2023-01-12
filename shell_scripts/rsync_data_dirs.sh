@@ -21,3 +21,4 @@ rsync directories
 echo "RSYNCing with $remotehost"
 rsync -azP ../data/ $remotehost:~/projects/plrt-conus/data
 rsync -azP ../results/ $remotehost:~/projects/plrt-conus/results
+# find ../results/ -maxdepth 2 | xargs -n1 -P4 -I% rsync -azP % $remotehost:~/projects/plrt-conus/shell_scripts/%
