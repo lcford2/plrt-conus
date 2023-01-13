@@ -1,11 +1,11 @@
 import datetime
 
 import pandas as pd
-from utils.config import FILES
+from utils.config import config
 from utils.io import load_feather, write_feather
 
-AGG_FILE = FILES["RESOPS_AGG"]
-MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
+AGG_FILE = config.get_file("resops_agg")
+MODEL_READY_FILE = config.get_file("model_ready_data")
 
 
 def get_max_date_span(in_df):
@@ -94,6 +94,13 @@ def make_model_ready_data(df):
     df["inflow2"] = df["net_inflow"] ** 2
 
     df = df.dropna(how="any", axis=0)
+    df["julian_day"] = df.index.get_level_values(1).dayofyear
+    julian_counts = df.groupby("res_id")["julian_day"].value_counts()
+    julian_counts = julian_counts.loc[pd.IndexSlice[:, list(range(1, 366))]]
+
+    julian_mask = julian_counts > 5
+    res_mask = julian_mask.groupby("res_id").all()
+    res_mask = res_mask[res_mask]
 
     spans = get_max_res_date_spans(df)
 
