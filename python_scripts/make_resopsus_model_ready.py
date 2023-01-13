@@ -98,9 +98,24 @@ def make_model_ready_data(df):
     julian_counts = df.groupby("res_id")["julian_day"].value_counts()
     julian_counts = julian_counts.loc[pd.IndexSlice[:, list(range(1, 366))]]
 
-    julian_mask = julian_counts > 5
-    res_mask = julian_mask.groupby("res_id").all()
-    res_mask = res_mask[res_mask]
+    trimmed_resers = {}
+    for i in range(1, 6):
+        julian_mask = julian_counts > i
+        res_mask = julian_mask.groupby("res_id").all()
+        trimmed_resers[i] = res_mask[res_mask].index
+        res_mask = res_mask[res_mask]
+
+    from utils.io import write_pickle
+
+    write_pickle(
+        trimmed_resers, config.get_dir("data") / "noncon_trim_res.pickle"
+    )
+    from IPython import embed as II
+
+    II()
+    import sys
+
+    sys.exit()
 
     spans = get_max_res_date_spans(df)
 
