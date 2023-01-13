@@ -9,6 +9,7 @@ PDIRS = {
     "RESOPS_PATH": __HOME / "data" / "ResOpsUS",
     "PROJECT_ROOT": PROJECT_ROOT,
     "PROJECT_DATA": PROJECT_ROOT / "data",
+    "PROJECT_SPATIAL_DATA": PROJECT_ROOT / "data" / "spatial_data",
     "PROJECT_RESULTS": PROJECT_ROOT / "results",
     "PROJECT_AGG_RESULTS": PROJECT_ROOT / "aggregated_results",
 }

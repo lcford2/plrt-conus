@@ -96,8 +96,19 @@ def make_model_ready_data(df):
     df = df.dropna(how="any", axis=0)
 
     spans = get_max_res_date_spans(df)
-    trimmed_spans = filter_short_spans(spans, 5)
-    trimmed_df = trim_data_to_span(df, trimmed_spans)
+
+    def get_trimmed_df(spans, min_yrs, df):
+        trimmed_spans = filter_short_spans(spans, 5)
+        trimmed_df = trim_data_to_span(df, trimmed_spans)
+        return trimmed_df
+
+    trimmed_df = get_trimmed_df(spans, 5, df)
+    from IPython import embed as II
+
+    II()
+    import sys
+
+    sys.exit()
     trimmed_percent = 1 - trimmed_df.shape[0] / df.shape[0]
     print(f"Trimming process removed {trimmed_percent:.1%} of records.")
     return trimmed_df
