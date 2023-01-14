@@ -17,6 +17,7 @@ ipython = "*"
 pyqt5 = "*"
 geopandas = "*"
 basemap = "*"
+palettable = "*"
 
 [dev-packages]
 black = "*"
