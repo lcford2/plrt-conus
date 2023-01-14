@@ -21,7 +21,7 @@ import pandas as pd
 from IPython import embed as II
 from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
-from utils.config import FILES, PDIRS
+from utils.config import config
 from utils.io import load_feather
 from utils.utils import my_groupby
 from utils.timing_function import time_function
@@ -126,8 +126,8 @@ def get_max_date_span(in_df):
 
 
 def load_resopsus_data():
-    data_file = FILES["MODEL_READY_DATA"]
-    meta_file = FILES["MODEL_READY_META"]
+    data_file = config.get_file("model_ready_data")
+    meta_file = config.get_file("model_ready_data")
     data = load_feather(data_file, index_keys=("res_id", "date"))
     data["inflow"] = data["net_inflow"]
     meta = load_feather(meta_file, index_keys=("res_id",))
@@ -544,7 +544,7 @@ def pipeline(args):
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
     foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
-    folderpath = PDIRS["PROJECT_RESULTS"] / model_set / foldername
+    folderpath = config.get_dir("results") / model_set / foldername
     # folderpath = pathlib.Path("..", "results", model_set, foldername)
 
     # check if the directory exists and handle it
@@ -556,7 +556,7 @@ def pipeline(args):
         response = "y"
         if response[0].lower() != "y":
             folderpath = (
-                PDIRS["PROJECT_RESULTS"]
+                config.get_dir("results")
                 / model_set
                 / "_".join(
                     [foldername, datetime.today().strfime("%Y%m%d_%H%M")]

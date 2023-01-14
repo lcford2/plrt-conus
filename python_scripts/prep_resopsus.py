@@ -1,9 +1,9 @@
 import pandas as pd
-from utils.config import FILES, PDIRS
+from utils.config import config
 from utils.io import write_feather
 
-RESOPS_PATH = PDIRS["RESOPS_PATH"]
-AGG_FILE = FILES["RESOPS_AGG"]
+RESOPS_PATH = config.get_dir("resops")
+AGG_FILE = config.get_file("resops_agg")
 
 
 def combine_single_variable_tables():

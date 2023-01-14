@@ -1,10 +1,10 @@
 import geopandas as gpd
 import pandas as pd
 from joblib import Parallel, delayed
-from utils.config import GENERAL_DATA_DIR, PDIRS
+from utils.config import config
 
-GIS_DIR = GENERAL_DATA_DIR / "GIS"
-SPAT_DIR = PDIRS["PROJECT_SPATIAL_DATA"]
+GIS_DIR = config.get_dir("general_data") / "GIS"
+SPAT_DIR = config.get_dir("spatial_data")
 
 
 def load_wbds():

@@ -1,9 +1,9 @@
 import pandas as pd
-from utils.config import FILES
+from utils.config import config
 from utils.io import load_feather, write_feather
 
-MODEL_READY_FILE = FILES["MODEL_READY_DATA"]
-MODEL_READY_META_FILE = FILES["MODEL_READY_META"]
+MODEL_READY_FILE = config.get_file("model_ready_data")
+MODEL_READY_META_FILE = config.get_file("model_ready_meta")
 
 
 def make_meta_data(df):

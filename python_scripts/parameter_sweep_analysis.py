@@ -8,18 +8,18 @@ import pandas as pd
 import seaborn as sns
 from IPython import embed as II
 from mpl_toolkits.basemap import Basemap
-from utils.config import FILES, GENERAL_DATA_DIR, PDIRS
+from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
 from utils.metrics import get_nrmse, get_nse
 from utils.plot_tools import get_pretty_var_name
 
-PSWEEP_RESULTS_DIR = PDIRS["PROJECT_RESULTS"] / "parameter_sweep"
-GIS_DIR = GENERAL_DATA_DIR / "GIS"
+PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
+GIS_DIR = config.get_dir("general_data") / "GIS"
 
 
 def load_grand_names():
     df = load_feather(
-        (PDIRS["PROJECT_DATA"] / "grand_names.feather").as_posix(),
+        (config.get_dir("data") / "grand_names.feather").as_posix(),
     )
     return df.set_index("GRAND_ID").drop("index", axis=1)
 
@@ -51,7 +51,7 @@ def get_parameter_sweep_data(results, dataset="simmed"):
 
 def calculate_metrics(data, data_set, recalc=False):
     metrics_file = (
-        PDIRS["PROJECT_AGG_RESULTS"]
+        config.get_dir("agg_results") 
         / "parameter_sweep"
         / f"{data_set}_metrics.pickle"
     )
@@ -162,10 +162,10 @@ def plot_single_model_metrics(df):
 
 
 def compare_training_testing_data(results):
-    meta = load_feather(FILES["MODEL_READY_META"])
+    meta = load_feather(config.get_file("model_ready_meta"))
     meta = meta.set_index("res_id")
 
-    mr_data = load_feather(FILES["MODEL_READY_DATA"]).set_index(
+    mr_data = load_feather(config.get_file("model_ready_meta")).set_index(
         ["res_id", "date"]
     )
 
@@ -310,12 +310,12 @@ def plot_training_testing_map(results):
         ax=ax, coords=[west, south, east, north], other_bound=other_bounds
     )
     grand = gpd.read_file(
-        GENERAL_DATA_DIR / "GRanD Databasev1.3" / "GRanD_reservoirs_v1_3.shp"
+        config.get_dir("general_data") / "GRanD Databasev1.3" / "GRanD_reservoirs_v1_3.shp"
     )
 
     test_df = get_parameter_sweep_data(results, dataset="test")
     train_df = get_parameter_sweep_data(results, dataset="train")
-    all_resops = load_feather(FILES["RESOPS_AGG"])
+    all_resops = load_feather(config.get_file("resops_agg"))
 
     test_res = test_df.index.get_level_values("res_id").unique().astype(int)
     train_res = train_df.index.get_level_values("res_id").unique().astype(int)
