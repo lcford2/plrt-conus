@@ -69,13 +69,14 @@ def plot_trimming_changes_map(noncon=False):
         resers = resers.astype(int)
         coords = grand.loc[resers]
         x, y =  list(zip(*[(row["LONG_DD"], row["LAT_DD"]) for _, row in coords.iterrows()]))
-        m.scatter(x, y, latlon=True, marker="v", label=f"{key} year", zorder=3)
+        n_res = len(x)
+        m.scatter(x, y, latlon=True, marker="v", label=f"{key} year ({n_res})", zorder=3)
     ax.legend(loc="lower left")
 
     plt.show()
 
 
 if __name__ == "__main__":
-    sns.set_theme(context="talk", palette=Vivid_5)
+    sns.set_theme(context="talk", palette=Vivid_5.mpl_colors)
     # determine_huc2_trimming_changes(True)
-    plot_trimming_changes_map(False)
+    plot_trimming_changes_map(True)
