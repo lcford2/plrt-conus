@@ -2,7 +2,7 @@ import datetime
 
 import pandas as pd
 from utils.config import config
-from utils.io import load_feather, write_feather
+from utils.io import load_feather, write_feather, write_pickle
 
 AGG_FILE = config.get_file("resops_agg")
 MODEL_READY_FILE = config.get_file("model_ready_data")
@@ -94,8 +94,9 @@ def make_model_ready_data(df):
     df["inflow2"] = df["net_inflow"] ** 2
 
     df = df.dropna(how="any", axis=0)
-    df["julian_day"] = df.index.get_level_values(1).dayofyear
-    julian_counts = df.groupby("res_id")["julian_day"].value_counts()
+    jdf = df.copy()
+    jdf["julian_day"] = jdf.index.get_level_values(1).dayofyear
+    julian_counts = jdf.groupby("res_id")["julian_day"].value_counts()
     julian_counts = julian_counts.loc[pd.IndexSlice[:, list(range(1, 366))]]
 
     trimmed_resers = {}
@@ -105,32 +106,38 @@ def make_model_ready_data(df):
         trimmed_resers[i] = res_mask[res_mask].index
         res_mask = res_mask[res_mask]
 
-    from utils.io import write_pickle
-
     write_pickle(
         trimmed_resers, config.get_dir("data") / "noncon_trim_res.pickle"
     )
-    from IPython import embed as II
-
-    II()
-    import sys
-
-    sys.exit()
 
     spans = get_max_res_date_spans(df)
 
     def get_trimmed_df(spans, min_yrs, df):
-        trimmed_spans = filter_short_spans(spans, 5)
+        trimmed_spans = filter_short_spans(spans, min_yrs)
         trimmed_df = trim_data_to_span(df, trimmed_spans)
         return trimmed_df
 
+    trimmed_dfs = {i: get_trimmed_df(spans, i, df) for i in range(1, 6)}
+
+    trimmed_resers = {
+        i: tdf.index.get_level_values("res_id").unique
+        for i, tdf in trimmed_dfs.items()
+    }
+
+    write_pickle(
+        trimmed_resers, config.get_dir("data") / "trimmed_resers.pickle"
+    )
+
+    for i, tdf in trimmed_dfs:
+        write_feather(
+            tdf,
+            config.get_dir("data")
+            / "model_ready_data"
+            / f"resops_{i}yr.feather",
+        )
+
     trimmed_df = get_trimmed_df(spans, 5, df)
-    from IPython import embed as II
 
-    II()
-    import sys
-
-    sys.exit()
     trimmed_percent = 1 - trimmed_df.shape[0] / df.shape[0]
     print(f"Trimming process removed {trimmed_percent:.1%} of records.")
     return trimmed_df
