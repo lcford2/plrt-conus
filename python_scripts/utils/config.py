@@ -14,6 +14,7 @@ class ConfigObject:
             "spatial_data": _project_root / "data" / "spatial_data",
             "results": _project_root / "results",
             "agg_results": _project_root / "aggregated_results",
+            "data_to_sync": _project_root / "data" / "to_sync",
         }
 
         self.pandas_format = "feather"

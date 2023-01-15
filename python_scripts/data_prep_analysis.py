@@ -1,22 +1,20 @@
-import matplotlib.pyplot as plt
-import seaborn as sns 
 import geopandas as gpd
+import matplotlib.pyplot as plt
+import seaborn as sns
 from palettable.cartocolors.qualitative import Vivid_5
-
+from parameter_sweep_analysis import get_contiguous_wbds, setup_map
 from utils.config import config
 from utils.io import load_feather, load_pickle
 
-from parameter_sweep_analysis import setup_map, get_contiguous_wbds
-
-DATA_DIR = config.get_dir("data")
-
 
 def load_trimmed_resers():
-    return load_pickle(DATA_DIR / "trimmed_resers.pickle")
+    return load_pickle(config.get_dir("data_to_sync") / "trimmed_resers.pickle")
 
 
 def load_noncon_trimmed_resers():
-    return load_pickle(DATA_DIR / "noncon_trim_res.pickle")
+    return load_pickle(
+        config.get_dir("data_to_sync") / "noncon_trim_res.pickle"
+    )
 
 
 def load_res_huc2_map():
@@ -40,6 +38,7 @@ def determine_huc2_trimming_changes(noncon=False):
 
     print(huc2_res_count.to_markdown(floatfmt=".0f"))
 
+
 def plot_trimming_changes_map(noncon=False):
     fig, ax = plt.subplots(1, 1)
 
@@ -57,7 +56,9 @@ def plot_trimming_changes_map(noncon=False):
         ax=ax, coords=[west, south, east, north], other_bound=other_bounds
     )
 
-    grand = gpd.read_file((config.get_dir("spatial_data") / "grand_info").as_posix())
+    grand = gpd.read_file(
+        (config.get_dir("spatial_data") / "grand_info").as_posix()
+    )
     grand = grand.set_index("GRAND_ID")
 
     if noncon:
@@ -68,9 +69,23 @@ def plot_trimming_changes_map(noncon=False):
     for key, resers in trimmed_res.items():
         resers = resers.astype(int)
         coords = grand.loc[resers]
-        x, y =  list(zip(*[(row["LONG_DD"], row["LAT_DD"]) for _, row in coords.iterrows()]))
+        x, y = list(
+            zip(
+                *[
+                    (row["LONG_DD"], row["LAT_DD"])
+                    for _, row in coords.iterrows()
+                ]
+            )
+        )
         n_res = len(x)
-        m.scatter(x, y, latlon=True, marker="v", label=f"{key} year ({n_res})", zorder=3)
+        m.scatter(
+            x,
+            y,
+            latlon=True,
+            marker="v",
+            label=f"{key} year ({n_res})",
+            zorder=3,
+        )
     ax.legend(loc="lower left")
 
     plt.show()

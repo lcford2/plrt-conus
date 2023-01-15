@@ -6,7 +6,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from IPython import embed as II
 from mpl_toolkits.basemap import Basemap
 from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
@@ -19,7 +18,7 @@ GIS_DIR = config.get_dir("general_data") / "GIS"
 
 def load_grand_names():
     df = load_feather(
-        (config.get_dir("data") / "grand_names.feather").as_posix(),
+        (config.get_dir("data_to_sync") / "grand_names.feather").as_posix(),
     )
     return df.set_index("GRAND_ID").drop("index", axis=1)
 
@@ -51,7 +50,7 @@ def get_parameter_sweep_data(results, dataset="simmed"):
 
 def calculate_metrics(data, data_set, recalc=False):
     metrics_file = (
-        config.get_dir("agg_results") 
+        config.get_dir("agg_results")
         / "parameter_sweep"
         / f"{data_set}_metrics.pickle"
     )
@@ -224,9 +223,8 @@ def setup_map(ax=None, coords=None, other_bound=None):
         ax=ax,
     )
 
-    states_path = GIS_DIR / "cb_2017_us_state_500k"
-
-    mbound = m.drawmapboundary(fill_color="white")
+    m.drawmapboundary(fill_color="white")
+    # states_path = GIS_DIR / "cb_2017_us_state_500k"
     # states = m.readshapefile(states_path.as_posix(), "states")
     # rivers = m.readshapefile(
     #     (GENERAL_DATA_DIR / "rivers" / "rivers_subset").as_posix(),
@@ -310,7 +308,9 @@ def plot_training_testing_map(results):
         ax=ax, coords=[west, south, east, north], other_bound=other_bounds
     )
     grand = gpd.read_file(
-        config.get_dir("general_data") / "GRanD Databasev1.3" / "GRanD_reservoirs_v1_3.shp"
+        config.get_dir("general_data")
+        / "GRanD Databasev1.3"
+        / "GRanD_reservoirs_v1_3.shp"
     )
 
     test_df = get_parameter_sweep_data(results, dataset="test")

@@ -107,7 +107,8 @@ def make_model_ready_data(df):
         res_mask = res_mask[res_mask]
 
     write_pickle(
-        trimmed_resers, config.get_dir("data") / "noncon_trim_res.pickle"
+        trimmed_resers,
+        config.get_dir("data_to_sync") / "noncon_trim_res.pickle",
     )
 
     spans = get_max_res_date_spans(df)
@@ -125,15 +126,13 @@ def make_model_ready_data(df):
     }
 
     write_pickle(
-        trimmed_resers, config.get_dir("data") / "trimmed_resers.pickle"
+        trimmed_resers, config.get_dir("data_to_sync") / "trimmed_resers.pickle"
     )
 
-    for i, tdf in trimmed_dfs:
+    for i, tdf in trimmed_dfs.items():
         write_feather(
             tdf,
-            config.get_dir("data")
-            / "model_ready_data"
-            / f"resops_{i}yr.feather",
+            config.get_dir("data") / "model_ready" / f"resops_{i}yr.feather",
         )
 
     trimmed_df = get_trimmed_df(spans, 5, df)

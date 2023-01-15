@@ -57,12 +57,12 @@ venv.bak/
 
 # editors
 .dir-locals.el
-.vscode
+# .vscode
 
 # data files
 data/*
-!data/trimmed_resers.pickle
 !data/spatial_data
+!data/to_sync
 
 
 # result files
