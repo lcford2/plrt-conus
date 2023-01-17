@@ -12,6 +12,7 @@ class ConfigObject:
             "resops": _home / "data" / "ResOpsUS",
             "data": _project_root / "data",
             "spatial_data": _project_root / "data" / "spatial_data",
+            "model_ready_data": _project_root / "data" / "model_ready",
             "results": _project_root / "results",
             "agg_results": _project_root / "aggregated_results",
             "data_to_sync": _project_root / "data" / "to_sync",
@@ -23,12 +24,14 @@ class ConfigObject:
             "resops_agg": self.dirs["data"]
             / "resopsus_agg"
             / f"sri_metric.{self.pandas_format}",
-            "model_ready_data": self.dirs["data"]
-            / "model_ready"
+            "model_ready_data": self.dirs["model_ready_data"]
             / f"resopsus.{self.pandas_format}",
-            "model_ready_meta": self.dirs["data"]
-            / "model_ready"
+            "model_ready_meta": self.dirs["model_ready_data"]
             / f"resopsus_meta.{self.pandas_format}",
+            "merged_data": self.dirs["model_ready_data"]
+            / f"merged_data.{self.pandas_format}",
+            "merged_meta": self.dirs["model_ready_data"]
+            / f"merged_data.{self.pandas_format}",
         }
 
         self.resopsus_unts = {

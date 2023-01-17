@@ -23,8 +23,8 @@ from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
 from utils.config import config
 from utils.io import load_feather
-from utils.utils import my_groupby
 from utils.timing_function import time_function
+from utils.utils import my_groupby
 
 
 def read_basin_data(basin: str) -> pd.DataFrame:
@@ -126,8 +126,8 @@ def get_max_date_span(in_df):
 
 
 def load_resopsus_data():
-    data_file = config.get_file("model_ready_data")
-    meta_file = config.get_file("model_ready_data")
+    data_file = config.get_file("merged_data")
+    meta_file = config.get_file("merged_meta")
     data = load_feather(data_file, index_keys=("res_id", "date"))
     data["inflow"] = data["net_inflow"]
     meta = load_feather(meta_file, index_keys=("res_id",))
@@ -201,11 +201,79 @@ def split_train_test_index_by_res(df, prop=0.8):
     return train_index, test_index
 
 
+def split_train_test_by_basin(resers, train_prop):
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "res_huc2.feather")
+    res_huc2 = res_huc2[res_huc2["res_id"].isin(resers.astype(int))]
+    hucs = res_huc2["huc2_id"].unique()
+    huc_resers = {
+        i: res_huc2[res_huc2["huc2_id"] == i]["res_id"].values for i in hucs
+    }
+    basin_train, basin_test = {}, {}
+    for huc_id, huc_res in huc_resers.items():
+        n_train_res = int(np.floor(len(huc_res) * train_prop))
+        train_res = np.random.choice(huc_res, n_train_res, replace=False)
+        test_res = [i for i in huc_res if i not in train_res]
+        basin_train[huc_id] = train_res
+        basin_test[huc_id] = test_res
+
+    return basin_train, basin_test
+
+
+def merge_mb_and_resops(df):
+    mb_df = load_feather(
+        config.get_dir("data") / "model_ready" / "mb_data.feather"
+    )
+    mb_df = mb_df.rename(
+        columns={
+            "GRAND_ID": "res_id",
+            "datetime": "date",
+            "inflow": "net_inflow",
+        }
+    )
+    mb_df = mb_df.set_index(["res_id", "date"])
+
+    taf_to_m3 = 1233.48 * 1000
+    base_columns = [
+        "release",
+        "release_pre",
+        "storage",
+        "storage_pre",
+        "net_inflow",
+        "release_roll7",
+        "inflow_roll7",
+        "storage_roll7",
+    ]
+    mb_df.loc[:, base_columns] *= taf_to_m3
+    mb_df["storage_x_inflow"] = mb_df["storage_pre"] * mb_df["net_inflow"]
+    mb_df["release_pre2"] = mb_df["release_pre"] ** 2
+    mb_df["inflow2"] = mb_df["net_inflow"] ** 2
+    expected_columns = [
+        *base_columns,
+        "storage_x_inflow",
+        "release_pre2",
+        "inflow2",
+    ]
+    mb_df = mb_df.loc[:, expected_columns]
+    existing_keys = []
+    for index in mb_df.index:
+        if index in df.index:
+            existing_keys.append(index)
+    df.loc[existing_keys, expected_columns] = mb_df.loc[
+        existing_keys, expected_columns
+    ]
+    left_out = mb_df.drop(existing_keys)
+    df = pd.concat([df, left_out])
+    df["good_row"] = df["good_row"].astype(bool)
+    df["all_vars"] = df["all_vars"].astype(bool)
+    return df
+
+
 def pipeline(args):
     # month_intercepts = args.month_ints
     max_depth = args.max_depth
 
     df, meta = load_resopsus_data()
+    # df = merge_mb_and_resops(df)
 
     lower_bounds = my_groupby(df, df.index.get_level_values(0)).min()
     upper_bounds = my_groupby(df, df.index.get_level_values(0)).max()
@@ -257,9 +325,18 @@ def pipeline(args):
     print("Splitting testing and training reservoirs")
     np.random.seed(44)
     train_fraction = 0.8
-    n_train_res = int(np.floor(len(reservoirs) * train_fraction))
-    train_res = np.random.choice(reservoirs, n_train_res, replace=False)
-    test_res = [i for i in reservoirs if i not in train_res]
+    basin_train, basin_test = split_train_test_by_basin(
+        reservoirs, train_fraction
+    )
+    train_res, test_res = [], []
+    for resers in basin_train.values():
+        train_res.extend(resers)
+    for resers in basin_test.values():
+        test_res.extend(resers)
+
+    # n_train_res = int(np.floor(len(reservoirs) * train_fraction))
+    # train_res = np.random.choice(reservoirs, n_train_res, replace=False)
+    # test_res = [i for i in reservoirs if i not in train_res]
 
     print("Getting training and testing data set")
     X_train = X.loc[
@@ -540,7 +617,7 @@ def pipeline(args):
     )
 
     # setup output parameters
-    model_set = "parameter_sweep"
+    model_set = "merged_data_set"
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
     foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
@@ -885,6 +962,13 @@ def parse_args(arg_list=None):
         default=3,
         type=int,
         help="How deep should the tree be allowed to go? (default=3)",
+    )
+    parser.add_argument(
+        "--min-years",
+        default=5,
+        choices=range(1, 6),
+        type=int,
+        help="How many years of data is required for a reservoir to be valid?",
     )
     # parser.add_argument(
     #     "-m",
