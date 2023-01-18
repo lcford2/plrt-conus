@@ -2,8 +2,8 @@ import pandas as pd
 from utils.config import config
 from utils.io import load_feather, write_feather
 
-MODEL_READY_FILE = config.get_file("model_ready_data")
-MODEL_READY_META_FILE = config.get_file("model_ready_meta")
+MODEL_READY_FILE = config.get_file("merged_data")
+MODEL_READY_META_FILE = config.get_file("merged_meta")
 
 
 def make_meta_data(df):

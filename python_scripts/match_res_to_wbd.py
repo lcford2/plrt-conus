@@ -22,7 +22,7 @@ def find_res_contained_in_wbd(wbd_id, wbd, grand_df):
 
 def match_grand_id_to_wbd():
     wbds = load_wbds()
-    grand = gpd.read_file(SPAT_DIR / "grand_info")
+    grand = gpd.read_file(SPAT_DIR / "my_grand_info")
 
     wbd_maps = Parallel(n_jobs=-1, verbose=11)(
         delayed(find_res_contained_in_wbd)(i + 1, wbd, grand)
@@ -33,7 +33,7 @@ def match_grand_id_to_wbd():
         wbd_map.extend(wbd)
 
     wbd_df = pd.DataFrame.from_records(wbd_map, columns=["res_id", "huc2_id"])
-    wbd_df.to_feather((SPAT_DIR / "res_huc2.feather").as_posix())
+    wbd_df.to_feather((SPAT_DIR / "updated_res_huc2.feather").as_posix())
 
 
 if __name__ == "__main__":

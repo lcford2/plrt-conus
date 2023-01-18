@@ -31,7 +31,7 @@ class ConfigObject:
             "merged_data": self.dirs["model_ready_data"]
             / f"merged_data.{self.pandas_format}",
             "merged_meta": self.dirs["model_ready_data"]
-            / f"merged_data.{self.pandas_format}",
+            / f"merged_meta.{self.pandas_format}",
         }
 
         self.resopsus_unts = {

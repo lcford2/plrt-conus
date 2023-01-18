@@ -202,8 +202,10 @@ def split_train_test_index_by_res(df, prop=0.8):
 
 
 def split_train_test_by_basin(resers, train_prop):
-    res_huc2 = load_feather(config.get_dir("spatial_data") / "res_huc2.feather")
-    res_huc2 = res_huc2[res_huc2["res_id"].isin(resers.astype(int))]
+    res_huc2 = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather"
+    )
+    res_huc2 = res_huc2[res_huc2["res_id"].isin(resers)]
     hucs = res_huc2["huc2_id"].unique()
     huc_resers = {
         i: res_huc2[res_huc2["huc2_id"] == i]["res_id"].values for i in hucs
@@ -757,7 +759,7 @@ def simulate_plrt_model(
         )
     else:
         outputdfs = []
-        for res in resers[:1]:
+        for res in resers:
             outputdfs.append(
                 simul_reservoir(
                     res,
@@ -922,7 +924,6 @@ def simul_reservoir(
                 rdf.loc[idx[res, tomorrow], "release_pre"] = release_act
             # here we already updated the _pre values we can use the
             # same logic to get rolling values
-
             rdf.loc[idx[res, tomorrow], "storage_roll7"] = rdf.loc[
                 idx[res, prev_seven], "storage_pre"
             ].mean()
@@ -941,7 +942,6 @@ def simul_reservoir(
         #     sys.exit()
         # print(rdf.loc[loc, :].T)
         rdf.loc[loc, :] = rdf.loc[loc, :]
-
     return rdf
 
 
