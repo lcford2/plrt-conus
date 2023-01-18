@@ -19,6 +19,7 @@ print("NJOBS          = ", njobs)
 import numpy as np
 import pandas as pd
 from IPython import embed as II
+from make_resopsus_meta_data import make_meta_data
 from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
 from utils.config import config
@@ -125,12 +126,21 @@ def get_max_date_span(in_df):
     return (span.min(), span.max())
 
 
-def load_resopsus_data():
-    data_file = config.get_file("merged_data")
-    meta_file = config.get_file("merged_meta")
-    data = load_feather(data_file, index_keys=("res_id", "date"))
-    data["inflow"] = data["net_inflow"]
-    meta = load_feather(meta_file, index_keys=("res_id",))
+def load_resopsus_data(min_years):
+    if min_years == 5:
+        data_file = config.get_file("merged_data")
+        meta_file = config.get_file("merged_meta")
+        meta = load_feather(meta_file, index_keys=("res_id",))
+        data = load_feather(data_file, index_keys=("res_id", "date"))
+        data["inflow"] = data["net_inflow"]
+    else:
+        data_file = (
+            config.get_dir("model_ready_data") / f"resops_{min_years}yr.feather"
+        )
+        data = load_feather(data_file, index_keys=("res_id", "date"))
+        data = merge_mb_and_resops(data)
+        data["inflow"] = data["net_inflow"]
+        meta = make_meta_data(data)
     return data, meta
 
 
@@ -274,8 +284,7 @@ def pipeline(args):
     # month_intercepts = args.month_ints
     max_depth = args.max_depth
 
-    df, meta = load_resopsus_data()
-    # df = merge_mb_and_resops(df)
+    df, meta = load_resopsus_data(args.min_years)
 
     lower_bounds = my_groupby(df, df.index.get_level_values(0)).min()
     upper_bounds = my_groupby(df, df.index.get_level_values(0)).max()
@@ -619,7 +628,7 @@ def pipeline(args):
     )
 
     # setup output parameters
-    model_set = "merged_data_set"
+    model_set = f"merged_data_set_minyr{args.min_years}"
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
     foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
