@@ -145,9 +145,17 @@ def load_resopsus_data(min_years):
 
 
 @time_function
-def prep_data(df):
-    grouper = df.index.get_level_values(0)
-    std_data = my_groupby(df, grouper).apply(lambda x: (x - x.mean()) / x.std())
+def prep_data(df, monthly=False):
+    if monthly:
+        grouper = [
+            df.index.get_level_values(0),
+            df.index.get_level_values(1).month,
+        ]
+    else:
+        grouper = df.index.get_level_values(0)
+    std_data = my_groupby(df, grouper).apply(
+        lambda x: (x - x.mean()) / x.std().replace({0.0: 1.0})
+    )
     means = my_groupby(df, grouper).mean()
     std = my_groupby(df, grouper).std()
     columns = [
@@ -280,6 +288,29 @@ def merge_mb_and_resops(df):
     return df
 
 
+def unstandardize(series, mean, std):
+    if len(mean.index.levels) > 1:
+        idx = pd.IndexSlice
+        umean = mean.unstack()
+        ustd = std.unstack()
+        series_act = series.copy()
+        for month in range(1, 13):
+            mseries = (
+                series.loc[
+                    idx[:, series.index.get_level_values(1).month == month]
+                ]
+                .unstack()
+                .T
+            )
+            mmean = umean[month]
+            mstd = ustd[month]
+            mseries_act = (mseries * mstd + mmean).T.stack()
+            series_act.loc[mseries_act.index] = mseries_act
+    else:
+        series_act = (series.unstack().T * std + mean).T.stack()
+    return series_act
+
+
 def pipeline(args):
     # month_intercepts = args.month_ints
     max_depth = args.max_depth
@@ -292,7 +323,7 @@ def pipeline(args):
     df = df.sort_index()
     reservoirs = meta.index
 
-    X, y, means, std = prep_data(df)
+    X, y, means, std = prep_data(df, monthly=args.monthly)
     df["sto_diff"] = X["storage_pre"] - X["storage_roll7"]
     X["sto_diff"] = X["storage_pre"] - X["storage_roll7"]
 
@@ -455,6 +486,7 @@ def pipeline(args):
             args.assim,
             pd.Series(preds, index=X_test.index),
             X_test,
+            parallel=args.parallel,
         )
         simuled = simuled[["release", "storage"]].dropna()
     else:
@@ -478,6 +510,7 @@ def pipeline(args):
             args.assim,
             pd.Series(preds, index=X_test.index),
             X_test,
+            parallel=args.parallel,
         )
         simuled = simuled[["release", "storage"]].dropna()
 
@@ -485,23 +518,34 @@ def pipeline(args):
     preds = pd.Series(preds, index=X_test.index)
     simmed = simuled["release"]
 
-    y_train_act = (
-        y_train.unstack().T * std.loc[train_res, "release"]
-        + means.loc[train_res, "release"]
-    ).T.stack()
-    y_test_act = (
-        y_test.unstack().T * std.loc[test_res, "release"]
-        + means.loc[test_res, "release"]
-    ).T.stack()
+    idx = pd.IndexSlice
+    if args.monthly:
+        train_locator = idx[train_res, :]
+        test_locator = idx[test_res, :]
+    else:
+        train_locator = train_res
+        test_locator = test_res
 
-    fitted_act = (
-        fitted.unstack().T * std.loc[train_res, "release"]
-        + means.loc[train_res, "release"]
-    ).T.stack()
-    preds_act = (
-        preds.unstack().T * std.loc[test_res, "release"]
-        + means.loc[test_res, "release"]
-    ).T.stack()
+    y_train_act = unstandardize(
+        y_train,
+        means.loc[train_locator, "release"],
+        std.loc[train_locator, "release"],
+    )
+    y_test_act = unstandardize(
+        y_test,
+        means.loc[test_locator, "release"],
+        std.loc[test_locator, "release"],
+    )
+    fitted_act = unstandardize(
+        fitted,
+        means.loc[train_locator, "release"],
+        std.loc[train_locator, "release"],
+    )
+    preds_act = unstandardize(
+        preds,
+        means.loc[test_locator, "release"],
+        std.loc[test_locator, "release"],
+    )
 
     y_test_sim = y_test_act.loc[simmed.index]
 
@@ -629,6 +673,8 @@ def pipeline(args):
 
     # setup output parameters
     model_set = f"merged_data_set_minyr{args.min_years}"
+    if args.monthly:
+        model_set = f"monthly_{model_set}"
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
     foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
@@ -699,6 +745,7 @@ def simulate_plrt_model(
     assim,
     preds,
     X_test,
+    parallel=True,
 ):
 
     # I need to keep track of actual storage and release outputs
@@ -746,7 +793,6 @@ def simulate_plrt_model(
     # we have to iterate through each reservoir independently
     from joblib import Parallel, delayed
 
-    parallel = True
     if parallel:
         outputdfs = Parallel(n_jobs=-1, verbose=11)(
             delayed(simul_reservoir)(
@@ -836,8 +882,11 @@ def simul_reservoir(
         idx[res, dates[0]], "storage_roll7"
     ]
 
+    monthly = len(means.index.levels) > 1
+
     for date in dates:
         loc = idx[res, date]
+        month = date.astype("datetime64[M]").astype(int) % 12 + 1
         # get values for today
         X_r = rdf.loc[loc, X_loc_vars]
         # add the interaction term
@@ -855,11 +904,30 @@ def simul_reservoir(
         # standardize the values
         reg_vars_nsd = reg_vars.copy()
         reg_vars_nsd.remove("sto_diff")
-        X_r = (X_r - means.loc[res, reg_vars_nsd]) / std.loc[res, reg_vars_nsd]
-        X_r["sto_diff"] = X_r["storage_pre"] - (
-            (rdf.loc[loc, "storage_roll7"] - means.loc[res, "storage_roll7"])
-            / std.loc[res, "storage_roll7"]
-        )
+
+        if monthly:
+            X_r = (
+                X_r - means.loc[pd.IndexSlice[res, month], reg_vars_nsd]
+            ) / std.loc[pd.IndexSlice[res, month], reg_vars_nsd]
+
+            X_r["sto_diff"] = X_r["storage_pre"] - (
+                (
+                    rdf.loc[loc, "storage_roll7"]
+                    - means.loc[pd.IndexSlice[res, month], "storage_roll7"]
+                )
+                / std.loc[pd.IndexSlice[res, month], "storage_roll7"]
+            )
+        else:
+            X_r = (X_r - means.loc[res, reg_vars_nsd]) / std.loc[
+                res, reg_vars_nsd
+            ]
+            X_r["sto_diff"] = X_r["storage_pre"] - (
+                (
+                    rdf.loc[loc, "storage_roll7"]
+                    - means.loc[res, "storage_roll7"]
+                )
+                / std.loc[res, "storage_roll7"]
+            )
 
         # and the constant
         X_r["const"] = 1
@@ -885,9 +953,15 @@ def simul_reservoir(
         # else:
         #     II()
         # get release back to actual space
-        release_act = (
-            release * std.loc[res, "release"] + means.loc[res, "release"]
-        )
+        if monthly:
+            release_act = (
+                release * std.loc[pd.IndexSlice[res, month], "release"]
+                + means.loc[pd.IndexSlice[res, month], "release"]
+            )
+        else:
+            release_act = (
+                release * std.loc[res, "release"] + means.loc[res, "release"]
+            )
         # calculate storage from mass balance
         storage = (
             rdf.loc[loc, "storage_pre"] + rdf.loc[loc, "inflow"] - release_act
@@ -1020,6 +1094,20 @@ def parse_args(arg_list=None):
         action="store_true",
         default=False,
         help="Just prepare the training and testing data then launch an IPython session.",
+    )
+    parser.add_argument(
+        "-p",
+        "--parallel",
+        action="store_true",
+        default=False,
+        help="Perform simulation in parallel to speed it up.",
+    )
+    parser.add_argument(
+        "-m",
+        "--monthly",
+        action="store_true",
+        default=False,
+        help="Standardize variables using monthly mean and std values.",
     )
     if arg_list:
         return parser.parse_args(arg_list)
