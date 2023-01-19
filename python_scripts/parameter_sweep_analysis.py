@@ -297,7 +297,7 @@ def get_contiguous_wbds():
     return bounds_files
 
 
-def plot_training_testing_map(results, min_yrs):
+def setup_wbd_map():
     fig, ax = plt.subplots(1, 1)
     wbds = get_contiguous_wbds()
 
@@ -312,12 +312,19 @@ def plot_training_testing_map(results, min_yrs):
     m = setup_map(
         ax=ax, coords=[west, south, east, north], other_bound=other_bounds
     )
+    return fig, ax, m
+
+
+def plot_training_testing_map(results, min_years):
+    fig, ax, m = setup_wbd_map()
     grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
-    big_grand = gpd.read_file(
-        config.get_dir("general_data")
-        / "GRanD_Version_1_3"
-        / "GRanD_reservoirs_v1_3.shp"
-    )
+    # big_grand = gpd.read_file(
+    #     config.get_dir("general_data")
+    #     / "GRanD_Version_1_3"
+    #     / "GRanD_reservoirs_v1_3.shp"
+    # )
+    big_grand = gpd.read_file(config.get_file("grand_file"))
+
     big_grand["GRAND_ID"] = big_grand["GRAND_ID"].astype(str)
 
     test_df = get_data_from_results(results, dataset="test")
@@ -355,7 +362,6 @@ def plot_training_testing_map(results, min_yrs):
     print("Train #:", len(train_x))
     print("Test #:", len(test_x))
     print("Left Out #:", len(left_out_x))
-    sys.exit()
 
     m.scatter(
         train_x, train_y, latlon=True, label="Training", marker="v", zorder=4
@@ -377,6 +383,47 @@ def plot_training_testing_map(results, min_yrs):
 
     plt.show()
 
+def plot_data_diff_map(results, year1, year2):
+    fig, ax, m = setup_wbd_map()
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+    big_grand = gpd.read_file(config.get_file("grand_file"))
+    big_grand["GRAND_ID"] = big_grand["GRAND_ID"].astype(str)
+
+    test_df = get_data_from_results(results, dataset="test")
+    train_df = get_data_from_results(results, dataset="train")
+    all_resops = load_feather(config.get_file("resops_agg"))
+
+    test_res = test_df.index.get_level_values("res_id").unique()
+    train_res = train_df.index.get_level_values("res_id").unique()
+    all_res = all_resops["res_id"].unique().astype(str)
+        
+    yr1_data, yr1_meta = load_resopsus_data(year1)
+    yr2_data, yr2_meta = load_resopsus_data(year2)
+
+    grand = grand.set_index("GRAND_ID")
+    
+    yr1_coords = grand.loc[yr1_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
+    yr2_coords = grand.loc[yr2_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
+
+    yr1_x, yr1_y = list(zip(*yr1_coords))
+    yr2_x, yr2_y = list(zip(*yr2_coords))
+
+    yr1_z = 4
+    yr2_z = 5
+    if len(yr1_x) < len(yr2_x):
+        yr1_z = 4
+        yr2_z = 5
+
+    m.scatter(
+        yr1_x, yr1_y, latlon=True, label=f"Min Years={year1}", marker="v", zorder=yr1_z
+    )
+    m.scatter(
+        yr2_x, yr2_y, latlon=True, label=f"Min Years={year2}", marker="v", zorder=yr2_z
+    )
+    
+    ax.legend(loc="lower left")
+
+    plt.show()
 
 if __name__ == "__main__":
     # plt.style.use("ggplot")
@@ -403,5 +450,7 @@ if __name__ == "__main__":
     df["test"] = get_data_from_results(results, dataset="test")[model]
     # plot_single_model_metrics(df)
 
-    # compare_training_testing_data(results, int(min_years))
-    plot_training_testing_map(results, min_years)
+    compare_training_testing_data(results, int(min_years))
+    # plot_training_testing_map(results, min_years)
+    # plot_data_diff_map(results, int(min_years), int(min_years) + 1)
+    # plot_data_diff_map(results, 3, 5)
