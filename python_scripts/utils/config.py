@@ -1,9 +1,10 @@
 import os
 import pathlib
+import socket
 
 
 class ConfigObject:
-    def __init__(self):
+    def __init__(self, grand_name):
         _home = pathlib.Path(os.path.expanduser("~"))
         _project_root = _home / "projects" / "plrt-conus"
         self.dirs = {
@@ -32,6 +33,8 @@ class ConfigObject:
             / f"merged_data.{self.pandas_format}",
             "merged_meta": self.dirs["model_ready_data"]
             / f"merged_meta.{self.pandas_format}",
+            "grand_file": self.dirs["general_data"]
+            / grand_name / "GRanD_reservoirs_v1_3.shp"
         }
 
         self.files["current_model_data"] = self.files["merged_data"]
@@ -67,4 +70,10 @@ class ConfigObject:
         return self.files[file_key]
 
 
-config = ConfigObject()
+
+if socket.gethostname() == "CCEE-DT-094":
+    grand_name = "GRanD Databasev1.3"
+else:
+    grand_name = "GRanD_Version_1_3"
+
+config = ConfigObject(grand_name=grand_name)
