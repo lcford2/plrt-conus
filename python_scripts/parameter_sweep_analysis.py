@@ -1,4 +1,3 @@
-import glob
 import pathlib
 
 import geopandas as gpd
@@ -6,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from fit_plrt_model import load_resopsus_data
 from mpl_toolkits.basemap import Basemap
 from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
@@ -23,16 +23,18 @@ def load_grand_names():
     return df.set_index("GRAND_ID").drop("index", axis=1)
 
 
-def load_parameter_sweep_results(model_dir=None):
-    if model_dir:
+def load_model_results(model_dir=None):
+    if isinstance(model_dir, str):
         model_dir = pathlib.Path(model_dir)
+
+    if isinstance(model_dir, pathlib.Path):
         return {model_dir.name: load_results(model_dir.as_posix())}
     else:
-        directories = glob.glob(f"{PSWEEP_RESULTS_DIR.as_posix()}/*")
+        directories = model_dir
         return {pathlib.Path(d).name: load_results(d) for d in directories}
 
 
-def get_parameter_sweep_data(results, dataset="simmed"):
+def get_data_from_results(results, dataset="simmed"):
     available_data = ["train", "test", "simmed"]
     if dataset not in available_data:
         raise ValueError(f"{dataset} must be in {available_data}")
@@ -160,15 +162,18 @@ def plot_single_model_metrics(df):
     plt.show()
 
 
-def compare_training_testing_data(results):
-    meta = load_feather(config.get_file("model_ready_meta"))
-    meta = meta.set_index("res_id")
+def compare_training_testing_data(results, min_years):
+    # meta = load_feather(
+    #     config.get_file("current_model_meta"), index_keys=("res_id",)
+    # )
 
-    mr_data = load_feather(config.get_file("model_ready_meta")).set_index(
-        ["res_id", "date"]
-    )
+    # mr_data = load_feather(
+    #     config.get_file("current_model_data"), index_keys=(["res_id", "date"])
+    # )
 
-    test_df = get_parameter_sweep_data(results, dataset="test")
+    mr_data, meta = load_resopsus_data(min_years)
+
+    test_df = get_data_from_results(results, dataset="test")
 
     test_res = test_df.index.get_level_values("res_id").unique()
 
@@ -292,7 +297,7 @@ def get_contiguous_wbds():
     return bounds_files
 
 
-def plot_training_testing_map(results):
+def plot_training_testing_map(results, min_yrs):
     fig, ax = plt.subplots(1, 1)
     wbds = get_contiguous_wbds()
 
@@ -307,19 +312,24 @@ def plot_training_testing_map(results):
     m = setup_map(
         ax=ax, coords=[west, south, east, north], other_bound=other_bounds
     )
-    grand = gpd.read_file(
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+    big_grand = gpd.read_file(
         config.get_dir("general_data")
-        / "GRanD Databasev1.3"
+        / "GRanD_Version_1_3"
         / "GRanD_reservoirs_v1_3.shp"
     )
+    big_grand["GRAND_ID"] = big_grand["GRAND_ID"].astype(str)
 
-    test_df = get_parameter_sweep_data(results, dataset="test")
-    train_df = get_parameter_sweep_data(results, dataset="train")
+    test_df = get_data_from_results(results, dataset="test")
+    train_df = get_data_from_results(results, dataset="train")
     all_resops = load_feather(config.get_file("resops_agg"))
 
-    test_res = test_df.index.get_level_values("res_id").unique().astype(int)
-    train_res = train_df.index.get_level_values("res_id").unique().astype(int)
-    all_res = all_resops["res_id"].unique().astype(int)
+    test_res = test_df.index.get_level_values("res_id").unique()
+    train_res = train_df.index.get_level_values("res_id").unique()
+    all_res = all_resops["res_id"].unique().astype(str)
+    merged_data, merged_meta = load_resopsus_data(min_years)
+    all_res = list(set([*all_res, *merged_meta.index]))
+
     left_out_res = [
         i for i in all_res if i not in test_res and i not in train_res
     ]
@@ -334,12 +344,18 @@ def plot_training_testing_map(results):
     ]
     left_out_coords = [
         (row.LONG_DD, row.LAT_DD)
-        for i, row in grand[grand["GRAND_ID"].isin(left_out_res)].iterrows()
+        for i, row in big_grand[
+            big_grand["GRAND_ID"].isin(left_out_res)
+        ].iterrows()
     ]
 
     train_x, train_y = list(zip(*train_coords))
     test_x, test_y = list(zip(*test_coords))
     left_out_x, left_out_y = list(zip(*left_out_coords))
+    print("Train #:", len(train_x))
+    print("Test #:", len(test_x))
+    print("Left Out #:", len(left_out_x))
+    sys.exit()
 
     m.scatter(
         train_x, train_y, latlon=True, label="Training", marker="v", zorder=4
@@ -347,15 +363,15 @@ def plot_training_testing_map(results):
     m.scatter(
         test_x, test_y, latlon=True, label="Testing", marker="v", zorder=4
     )
-    m.scatter(
-        left_out_x,
-        left_out_y,
-        latlon=True,
-        label="Excluded",
-        marker="v",
-        zorder=3,
-        alpha=0.8,
-    )
+    # m.scatter(
+    #     left_out_x,
+    #     left_out_y,
+    #     latlon=True,
+    #     label="Excluded",
+    #     marker="v",
+    #     zorder=3,
+    #     alpha=0.8,
+    # )
 
     ax.legend(loc="lower left")
 
@@ -365,18 +381,27 @@ def plot_training_testing_map(results):
 if __name__ == "__main__":
     # plt.style.use("ggplot")
     sns.set_theme(context="talk", palette="Set2")
-    # results = load_parameter_sweep_results()
-    # simmed_data = get_parameter_sweep_data(results, dataset="simmed")
+    # results = load_model_results()
+    # simmed_data = get_data_from_results(results, dataset="simmed")
     # metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
     # nse, rmse = metrics["nse"], metrics["nrmse"]
     # plot_metric_box_plot(nse, "NSE")
 
+    import sys
+
+    if len(sys.argv) > 1:
+        min_years = sys.argv[1]
+    else:
+        min_years = 5
+
     model = "TD3_MSS0.04"
-    results = load_parameter_sweep_results(PSWEEP_RESULTS_DIR / model)
-    df = get_parameter_sweep_data(results, dataset="simmed")
+    results = load_model_results(
+        config.get_dir("results") / f"merged_data_set_minyr{min_years}" / model
+    )
+    df = get_data_from_results(results, dataset="simmed")
     df = df.rename(columns={model: "simmed"})
-    df["test"] = get_parameter_sweep_data(results, dataset="test")[model]
+    df["test"] = get_data_from_results(results, dataset="test")[model]
     # plot_single_model_metrics(df)
 
-    # compare_training_testing_data(results)
-    plot_training_testing_map(results)
+    # compare_training_testing_data(results, int(min_years))
+    plot_training_testing_map(results, min_years)

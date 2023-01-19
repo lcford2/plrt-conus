@@ -34,6 +34,9 @@ class ConfigObject:
             / f"merged_meta.{self.pandas_format}",
         }
 
+        self.files["current_model_data"] = self.files["merged_data"]
+        self.files["current_model_meta"] = self.files["merged_meta"]
+
         self.resopsus_unts = {
             "storage": "cubic meters",
             "release": "cubic meters per day",

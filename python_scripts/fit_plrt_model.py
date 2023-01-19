@@ -11,9 +11,6 @@ CPUS = cpu_count()
 nprocs_per_job = 2
 njobs = int(CPUS / 2)
 os.environ["OMP_NUM_THREADS"] = str(nprocs_per_job)
-print("CPUS           = ", CPUS)
-print("NPROCS_PER_JOB = ", nprocs_per_job)
-print("NJOBS          = ", njobs)
 
 
 import numpy as np
@@ -1116,5 +1113,8 @@ def parse_args(arg_list=None):
 
 
 if __name__ == "__main__":
+    print("CPUS           = ", CPUS)
+    print("NPROCS_PER_JOB = ", nprocs_per_job)
+    print("NJOBS          = ", njobs)
     args = parse_args()
     pipeline(args)
