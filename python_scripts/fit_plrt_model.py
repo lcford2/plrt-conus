@@ -12,11 +12,11 @@ nprocs_per_job = 2
 njobs = int(CPUS / 2)
 os.environ["OMP_NUM_THREADS"] = str(nprocs_per_job)
 
-
 import numpy as np
 import pandas as pd
 from IPython import embed as II
 from make_resopsus_meta_data import make_meta_data
+from make_resopsus_model_ready import get_max_res_date_spans, trim_data_to_span
 from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
 from utils.config import config
@@ -124,20 +124,22 @@ def get_max_date_span(in_df):
 
 
 def load_resopsus_data(min_years):
-    if min_years == 5:
-        data_file = config.get_file("merged_data")
-        meta_file = config.get_file("merged_meta")
-        meta = load_feather(meta_file, index_keys=("res_id",))
-        data = load_feather(data_file, index_keys=("res_id", "date"))
-        data["inflow"] = data["net_inflow"]
-    else:
-        data_file = (
-            config.get_dir("model_ready_data") / f"resops_{min_years}yr.feather"
-        )
-        data = load_feather(data_file, index_keys=("res_id", "date"))
-        data = merge_mb_and_resops(data)
-        data["inflow"] = data["net_inflow"]
-        meta = make_meta_data(data)
+    # if min_years == 5:
+    #     data_file = config.get_file("merged_data")
+    #     meta_file = config.get_file("merged_meta")
+    #     meta = load_feather(meta_file, index_keys=("res_id",))
+    #     data = load_feather(data_file, index_keys=("res_id", "date"))
+    #     data["inflow"] = data["net_inflow"]
+    # else:
+    data_file = (
+        config.get_dir("model_ready_data") / f"resops_{min_years}yr.feather"
+    )
+    data = load_feather(data_file, index_keys=("res_id", "date"))
+    data = merge_mb_and_resops(data)
+    data["inflow"] = data["net_inflow"]
+    spans = get_max_res_date_spans(data)
+    data = trim_data_to_span(data, spans)
+    meta = make_meta_data(data)
     return data, meta
 
 
@@ -154,7 +156,7 @@ def prep_data(df, monthly=False):
         lambda x: (x - x.mean()) / x.std().replace({0.0: 1.0})
     )
     means = my_groupby(df, grouper).mean()
-    std = my_groupby(df, grouper).std()
+    std = my_groupby(df, grouper).std().replace({0.0: 1.0})
     columns = [
         "release_pre",
         "storage",
@@ -943,6 +945,11 @@ def simul_reservoir(
         else:
             release = X_r[X_loc_vars] @ model
 
+        if np.isnan(release):
+            import ipdb
+
+            ipdb.set_trace()
+
         # if abs(release - preds.loc[loc]) > 0.000001:
         #     print(res, date, release, preds.loc[loc])
         # if date - np.timedelta64(7, "D"):
@@ -1070,7 +1077,8 @@ def parse_args(arg_list=None):
             "semi-annually",
             "yearly",
         ),
-        help="Frequency at which to assimilate observed storage and release values",
+        help="Frequency at which to assimilate observed"
+        " storage and release values",
     )
     parser.add_argument(
         "-M",
@@ -1083,14 +1091,16 @@ def parse_args(arg_list=None):
         "--mss",
         type=float,
         default=0.05,
-        help="Fraction of samples required to be in a child node to perform a split",
+        help="Fraction of samples required to be in a child"
+        " node to perform a split",
     )
     parser.add_argument(
         "--data-init",
         dest="data_init",
         action="store_true",
         default=False,
-        help="Just prepare the training and testing data then launch an IPython session.",
+        help="Just prepare the training and testing data then"
+        " launch an IPython session.",
     )
     parser.add_argument(
         "-p",
