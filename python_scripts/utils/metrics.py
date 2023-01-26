@@ -5,6 +5,10 @@ def nrmse(actual, model):
     return mean_squared_error(actual, model, squared=False) / actual.mean()
 
 
+def nnse(actual, model):
+    return 1 / (2 - r2_score(actual, model))
+
+
 def get_nse(df, actual, model, grouper=None):
     if grouper:
         scores = df.groupby(grouper).apply(
@@ -13,6 +17,15 @@ def get_nse(df, actual, model, grouper=None):
     else:
         scores = r2_score(df[actual], df[model])
     scores.name = "NSE"
+    return scores
+
+
+def get_nnse(df, actual, model, grouper=None):
+    if grouper:
+        scores = df.groupby(grouper).apply(lambda x: nnse(x[actual], x[model]))
+    else:
+        scores = nnse(df[actual], df[model])
+    scores.name = "NNSE"
     return scores
 
 
