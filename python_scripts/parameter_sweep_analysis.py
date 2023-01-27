@@ -9,30 +9,68 @@ from fit_plrt_model import load_resopsus_data
 from mpl_toolkits.basemap import Basemap
 from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
-from utils.metrics import get_nrmse, get_nse
+from utils.metrics import get_nnse, get_nrmse, get_nse
 from utils.plot_tools import get_pretty_var_name
 
 PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
 GIS_DIR = config.get_dir("general_data") / "GIS"
 
 
-def load_grand_names():
-    df = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+def load_grand_db() -> gpd.GeoDataFrame:
+    """Load the GRanD database
+
+    Returns:
+        gpd.GeoDataFrame: GeoDataFrame of GRanD DB
+    """
+    df = gpd.read_file(
+        (config.get_dir("spatial_data") / "my_grand_info").as_posix()
+    )
     return df.set_index("GRAND_ID")
 
 
-def load_model_results(model_dir=None):
-    if isinstance(model_dir, str):
-        model_dir = pathlib.Path(model_dir)
+def load_model_results(model_dir: str | pathlib.Path) -> dict:
+    """Load PLRT Model results
 
+    Args:
+        model_dir (str | pathlib.Path): Directory containing model results.
+
+    Returns:
+        _type_: _description_
+    """
     if isinstance(model_dir, pathlib.Path):
-        return {model_dir.name: load_results(model_dir.as_posix())}
-    else:
-        directories = model_dir
-        return {pathlib.Path(d).name: load_results(d) for d in directories}
+        model_dir = model_dir.as_posix()
+
+    return {model_dir.name: load_results(model_dir.as_posix())}
 
 
-def get_data_from_results(results, dataset="simmed"):
+def load_model_results_from_list(model_dirs: list) -> dict:
+    """Load PLRT results for each item in model_dirs
+
+    Args:
+        model_dirs (list): List of directories to load results for
+
+    Returns:
+        dict: Keys are the name of the directory for each directory model_dirs.
+            Values are the dictionaries returned from `load_model_results`
+    """
+    return {pathlib.Path(d).name: load_model_results(d) for d in model_dirs}
+
+
+def get_data_from_results(results: dict, dataset="simmed") -> pd.DataFrame:
+    """Extract a particular dataset from results
+
+    Args:
+        results (dict): results dict (e.g. output from
+            `load_model_results_from_list`)
+        dataset (str, optional): Dataset to extract. Defaults to "simmed".
+
+    Raises:
+        ValueError: If dataset is not in [train, test, simmed]
+
+    Returns:
+        pd.DataFrame: Dataset requested, where the "model" column is renamed
+            to the name of the model (keys in the results dict)
+    """
     available_data = ["train", "test", "simmed"]
     if dataset not in available_data:
         raise ValueError(f"{dataset} must be in {available_data}")
@@ -48,7 +86,9 @@ def get_data_from_results(results, dataset="simmed"):
     return output
 
 
-def calculate_metrics(data, data_set, recalc=False):
+def calculate_metrics(
+    data: pd.DataFrame, data_set: str, metrics=("nnse", "rmse"), recalc=False
+) -> dict:
     metrics_file = (
         config.get_dir("agg_results")
         / "parameter_sweep"
@@ -111,10 +151,12 @@ def plot_metric_box_plot(metric_df, metric):
 
 
 def plot_single_model_metrics(df):
-    grand_names = load_grand_names()
+    grand_names = load_grand_db()
     test_nse = get_nse(df, "actual", "test", grouper="res_id")
+    test_nnse = get_nnse(df, "actual", "test", grouper="res_id")
     test_nrmse = get_nrmse(df, "actual", "test", grouper="res_id")
     simmed_nse = get_nse(df, "actual", "simmed", grouper="res_id")
+    simmed_nnse = get_nnse(df, "actual", "simmed", grouper="res_id")
     simmed_nrmse = get_nrmse(df, "actual", "simmed", grouper="res_id")
 
     from IPython import embed as II
@@ -124,16 +166,19 @@ def plot_single_model_metrics(df):
 
     sys.exit()
     nse = pd.DataFrame.from_dict({"test": test_nse, "simmed": simmed_nse})
+    nnse = pd.DataFrame.from_dict({"test": test_nnse, "simmed": simmed_nnse})
     nrmse = pd.DataFrame.from_dict({"test": test_nrmse, "simmed": simmed_nrmse})
 
     nse = nse.reset_index().melt(id_vars="res_id")
+    nnse = nnse.reset_index().melt(id_vars="res_id")
     nrmse = nrmse.reset_index().melt(id_vars="res_id")
     nse["metric"] = "nse"
+    nnse["metric"] = "nnse"
     nrmse["metric"] = "nrmse"
 
-    metrics = pd.concat([nse, nrmse])
+    metrics = pd.concat([nnse, nrmse])
     metrics["res_name"] = metrics["res_id"].apply(
-        lambda x: grand_names.loc[x, "RES_NAME"]
+        lambda x: grand_names.loc[x, "DAM_NAME"]
     )
     metrics = metrics.sort_values(by=["metric", "value"])
 
@@ -152,13 +197,13 @@ def plot_single_model_metrics(df):
         sharey=False,
     )
     axes = fg.axes.flatten()
-    axes[0].legend(loc="best")
+    axes[1].legend(loc="best")
     axes[1].tick_params(axis="x", labelrotation=90)
 
     axes[1].set_xticklabels(axes[1].get_xticklabels(), rotation=60, ha="right")
     fg.set_titles("")
-    axes[0].set_ylabel("NRMSE")
-    axes[1].set_ylabel("NSE")
+    axes[0].set_ylabel("NNSE")
+    axes[1].set_ylabel("NRMSE")
     axes[1].set_xlabel("")
 
     fg.figure.align_ylabels()
@@ -388,6 +433,55 @@ def plot_training_testing_map(results, min_years):
     plt.show()
 
 
+def plot_data_diff_map(results, year1, year2):
+    fig, ax, m = setup_wbd_map()
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+    big_grand = gpd.read_file(config.get_file("grand_file"))
+    big_grand["GRAND_ID"] = big_grand["GRAND_ID"].astype(str)
+
+    yr1_data, yr1_meta = load_resopsus_data(year1)
+    yr2_data, yr2_meta = load_resopsus_data(year2)
+
+    grand = grand.set_index("GRAND_ID")
+
+    yr1_coords = grand.loc[
+        yr1_meta.index, ["LONG_DD", "LAT_DD"]
+    ].values.tolist()
+    yr2_coords = grand.loc[
+        yr2_meta.index, ["LONG_DD", "LAT_DD"]
+    ].values.tolist()
+
+    yr1_x, yr1_y = list(zip(*yr1_coords))
+    yr2_x, yr2_y = list(zip(*yr2_coords))
+
+    yr1_z = 4
+    yr2_z = 5
+    if len(yr1_x) < len(yr2_x):
+        yr1_z = 4
+        yr2_z = 5
+
+    m.scatter(
+        yr1_x,
+        yr1_y,
+        latlon=True,
+        label=f"Min Years={year1}",
+        marker="v",
+        zorder=yr1_z,
+    )
+    m.scatter(
+        yr2_x,
+        yr2_y,
+        latlon=True,
+        label=f"Min Years={year2}",
+        marker="v",
+        zorder=yr2_z,
+    )
+
+    ax.legend(loc="lower left")
+
+    plt.show()
+
+
 if __name__ == "__main__":
     # plt.style.use("ggplot")
     sns.set_theme(context="talk", palette="Set2")
@@ -402,7 +496,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         min_years = sys.argv[1]
     else:
-        min_years = 5
+        min_years = 3
 
     model = "TD3_MSS0.04"
     results = load_model_results(

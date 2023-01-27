@@ -2,10 +2,12 @@
 	"folders": [
 		{
 			"path": "."
+		},
+		{
+			"path": "../../plrt"
 		}
 	],
 	"settings": {
-		"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
 		"python.analysis.autoImportCompletions": false,
 		"python.analysis.exclude": [
 			"${workspaceFolder}/results",
@@ -13,7 +15,16 @@
 			"${workspaceFolder}/data",
 			"${workspaceFolder}/shell_scripts",
 		],
-		"python.formatting.provider": "black",
-		"python.formatting.blackArgs": ["--line-length", "80"],
-	}
+        "python.formatting.provider": "black",
+        "python.formatting.blackArgs": [
+            "--line-length", "80"
+        ],
+        "isort.args": [
+            "--line-length", "80", "--trailing-comma",
+            "--formatter", "black"
+        ],
+        "python.analysis.completeFunctionParens": true,
+        "editor.tabCompletion": "on",
+        "editor.tabSize": 4,
+    }
 }

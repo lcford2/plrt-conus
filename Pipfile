@@ -28,6 +28,8 @@ commitizen = "*"
 ipdb = "*"
 ipython = "*"
 odfpy = "*"
+pydocstyle = "*"
+prospector = "*"
 
 [requires]
 python_version = "3.10"

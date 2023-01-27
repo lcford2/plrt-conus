@@ -57,7 +57,7 @@ venv.bak/
 
 # editors
 .dir-locals.el
-# .vscode
+.vscode
 
 # data files
 data/*
