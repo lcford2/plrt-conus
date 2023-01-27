@@ -17,10 +17,8 @@ GIS_DIR = config.get_dir("general_data") / "GIS"
 
 
 def load_grand_names():
-    df = load_feather(
-        (config.get_dir("data_to_sync") / "grand_names.feather").as_posix(),
-    )
-    return df.set_index("GRAND_ID").drop("index", axis=1)
+    df = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+    return df.set_index("GRAND_ID")
 
 
 def load_model_results(model_dir=None):
@@ -119,6 +117,12 @@ def plot_single_model_metrics(df):
     simmed_nse = get_nse(df, "actual", "simmed", grouper="res_id")
     simmed_nrmse = get_nrmse(df, "actual", "simmed", grouper="res_id")
 
+    from IPython import embed as II
+
+    II()
+    import sys
+
+    sys.exit()
     nse = pd.DataFrame.from_dict({"test": test_nse, "simmed": simmed_nse})
     nrmse = pd.DataFrame.from_dict({"test": test_nrmse, "simmed": simmed_nrmse})
 
@@ -129,7 +133,7 @@ def plot_single_model_metrics(df):
 
     metrics = pd.concat([nse, nrmse])
     metrics["res_name"] = metrics["res_id"].apply(
-        lambda x: grand_names.loc[int(x), "RES_NAME"]
+        lambda x: grand_names.loc[x, "RES_NAME"]
     )
     metrics = metrics.sort_values(by=["metric", "value"])
 
@@ -383,47 +387,6 @@ def plot_training_testing_map(results, min_years):
 
     plt.show()
 
-def plot_data_diff_map(results, year1, year2):
-    fig, ax, m = setup_wbd_map()
-    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
-    big_grand = gpd.read_file(config.get_file("grand_file"))
-    big_grand["GRAND_ID"] = big_grand["GRAND_ID"].astype(str)
-
-    test_df = get_data_from_results(results, dataset="test")
-    train_df = get_data_from_results(results, dataset="train")
-    all_resops = load_feather(config.get_file("resops_agg"))
-
-    test_res = test_df.index.get_level_values("res_id").unique()
-    train_res = train_df.index.get_level_values("res_id").unique()
-    all_res = all_resops["res_id"].unique().astype(str)
-        
-    yr1_data, yr1_meta = load_resopsus_data(year1)
-    yr2_data, yr2_meta = load_resopsus_data(year2)
-
-    grand = grand.set_index("GRAND_ID")
-    
-    yr1_coords = grand.loc[yr1_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
-    yr2_coords = grand.loc[yr2_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
-
-    yr1_x, yr1_y = list(zip(*yr1_coords))
-    yr2_x, yr2_y = list(zip(*yr2_coords))
-
-    yr1_z = 4
-    yr2_z = 5
-    if len(yr1_x) < len(yr2_x):
-        yr1_z = 4
-        yr2_z = 5
-
-    m.scatter(
-        yr1_x, yr1_y, latlon=True, label=f"Min Years={year1}", marker="v", zorder=yr1_z
-    )
-    m.scatter(
-        yr2_x, yr2_y, latlon=True, label=f"Min Years={year2}", marker="v", zorder=yr2_z
-    )
-    
-    ax.legend(loc="lower left")
-
-    plt.show()
 
 if __name__ == "__main__":
     # plt.style.use("ggplot")
@@ -443,14 +406,14 @@ if __name__ == "__main__":
 
     model = "TD3_MSS0.04"
     results = load_model_results(
-        config.get_dir("results") / f"merged_data_set_minyr{min_years}" / model
+        config.get_dir("results")
+        / f"monthly_merged_data_set_minyr{min_years}"
+        / model
     )
     df = get_data_from_results(results, dataset="simmed")
     df = df.rename(columns={model: "simmed"})
     df["test"] = get_data_from_results(results, dataset="test")[model]
-    # plot_single_model_metrics(df)
+    plot_single_model_metrics(df)
 
-    compare_training_testing_data(results, int(min_years))
+    # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)
-    # plot_data_diff_map(results, int(min_years), int(min_years) + 1)
-    # plot_data_diff_map(results, 3, 5)
