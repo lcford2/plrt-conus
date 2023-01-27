@@ -26,5 +26,7 @@
         "python.analysis.completeFunctionParens": true,
         "editor.tabCompletion": "on",
         "editor.tabSize": 4,
+		"python.linting.flake8Enabled": true,
+		"python.linting.enabled": true
     }
 }
