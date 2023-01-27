@@ -16,29 +16,61 @@ PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
 GIS_DIR = config.get_dir("general_data") / "GIS"
 
 
-def load_grand_names():
-    # df = load_feather(
-    #     (config.get_dir("data_to_sync") / "grand_names.feather").as_posix(),
-    # )
+def load_grand_db() -> gpd.GeoDataFrame:
+    """Load the GRanD database
+
+    Returns:
+        gpd.GeoDataFrame: GeoDataFrame of GRanD DB
+    """
     df = gpd.read_file(
         (config.get_dir("spatial_data") / "my_grand_info").as_posix()
     )
-    # return df.set_index("GRAND_ID").drop("index", axis=1)
     return df.set_index("GRAND_ID")
 
 
-def load_model_results(model_dir=None):
-    if isinstance(model_dir, str):
-        model_dir = pathlib.Path(model_dir)
+def load_model_results(model_dir: str | pathlib.Path) -> dict:
+    """Load PLRT Model results
 
+    Args:
+        model_dir (str | pathlib.Path): Directory containing model results.
+
+    Returns:
+        _type_: _description_
+    """
     if isinstance(model_dir, pathlib.Path):
-        return {model_dir.name: load_results(model_dir.as_posix())}
-    else:
-        directories = model_dir
-        return {pathlib.Path(d).name: load_results(d) for d in directories}
+        model_dir = model_dir.as_posix()
+
+    return {model_dir.name: load_results(model_dir.as_posix())}
 
 
-def get_data_from_results(results, dataset="simmed"):
+def load_model_results_from_list(model_dirs: list) -> dict:
+    """Load PLRT results for each item in model_dirs
+
+    Args:
+        model_dirs (list): List of directories to load results for
+
+    Returns:
+        dict: Keys are the name of the directory for each directory model_dirs.
+            Values are the dictionaries returned from `load_model_results`
+    """
+    return {pathlib.Path(d).name: load_model_results(d) for d in model_dirs}
+
+
+def get_data_from_results(results: dict, dataset="simmed") -> pd.DataFrame:
+    """Extract a particular dataset from results
+
+    Args:
+        results (dict): results dict (e.g. output from
+            `load_model_results_from_list`)
+        dataset (str, optional): Dataset to extract. Defaults to "simmed".
+
+    Raises:
+        ValueError: If dataset is not in [train, test, simmed]
+
+    Returns:
+        pd.DataFrame: Dataset requested, where the "model" column is renamed
+            to the name of the model (keys in the results dict)
+    """
     available_data = ["train", "test", "simmed"]
     if dataset not in available_data:
         raise ValueError(f"{dataset} must be in {available_data}")
@@ -54,7 +86,9 @@ def get_data_from_results(results, dataset="simmed"):
     return output
 
 
-def calculate_metrics(data, data_set, recalc=False):
+def calculate_metrics(
+    data: pd.DataFrame, data_set: str, metrics=("nnse", "rmse"), recalc=False
+) -> dict:
     metrics_file = (
         config.get_dir("agg_results")
         / "parameter_sweep"
@@ -117,7 +151,7 @@ def plot_metric_box_plot(metric_df, metric):
 
 
 def plot_single_model_metrics(df):
-    grand_names = load_grand_names()
+    grand_names = load_grand_db()
     test_nse = get_nse(df, "actual", "test", grouper="res_id")
     test_nnse = get_nnse(df, "actual", "test", grouper="res_id")
     test_nrmse = get_nrmse(df, "actual", "test", grouper="res_id")
