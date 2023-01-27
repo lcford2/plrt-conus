@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import utils.metrics as metric_funcs
 from fit_plrt_model import load_resopsus_data
 from mpl_toolkits.basemap import Basemap
 from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
-from utils.metrics import get_nnse, get_nrmse, get_nse
 from utils.plot_tools import get_pretty_var_name
 
 PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
@@ -89,10 +89,26 @@ def get_data_from_results(results: dict, dataset="simmed") -> pd.DataFrame:
 def calculate_metrics(
     data: pd.DataFrame, data_set: str, metrics=("nnse", "rmse"), recalc=False
 ) -> dict:
+    """Calculate model performance metrics on the data provided
+
+    Args:
+        data (pd.DataFrame): Data with an `actual` column and other
+            model columns
+        data_set (str): name of data set that data refers to
+        metrics (tuple, optional): Metrics to calculate.
+            Defaults to ("nnse", "rmse").
+        recalc (bool, optional): Force recalculation even if cached version
+            exists. Defaults to False.
+
+    Returns:
+        dict: keys are `metrics`, values are metric data frames where each
+            column refers to a model
+    """
+    file_name = "_".join([data_set, *metrics])
     metrics_file = (
         config.get_dir("agg_results")
         / "parameter_sweep"
-        / f"{data_set}_metrics.pickle"
+        / f"{file_name}.pickle"
     )
     if not recalc and metrics_file.exists():
         return load_pickle(metrics_file.as_posix())
@@ -102,29 +118,35 @@ def calculate_metrics(
         key=lambda x: (int(x.split("_")[0][2:]), float(x.split("_")[1][3:])),
     )
 
-    nse = pd.DataFrame()
-    nrmse = pd.DataFrame()
-    for model in models:
-        m_nse = get_nse(data, "actual", model, grouper="res_id")
-        m_nrmse = get_nrmse(data, "actual", model, grouper="res_id")
-        m_nse.name = model
-        m_nrmse.name = model
+    output = {}
+    for metric in metrics:
+        f_metric = getattr(metric_funcs, f"get_{metric.lower()}")
+        metric_df = pd.DataFrame()
+        for model in models:
+            model_df = f_metric(data, "actual", model, grouper="res_id")
+            model_df.name = model
 
-        if nse.empty:
-            nse = m_nse.to_frame()
-        else:
-            nse[model] = m_nse
+            if metric_df.empty:
+                metric_df = model_df.to_frame()
+            else:
+                metric_df[model] = model_df
+        output[metric] = metric_df
 
-        if nrmse.empty:
-            nrmse = m_nrmse.to_frame()
-        else:
-            nrmse[model] = m_nrmse
-
-    write_pickle({"nse": nse, "nrmse": nrmse}, metrics_file.as_posix())
-    return {"nse": nse, "nrmse": nrmse}
+    write_pickle(output, metrics_file.as_posix())
+    return output
 
 
-def metric_wide_to_long(metric_df, metric):
+def metric_wide_to_long(metric_df: pd.DataFrame, metric: str) -> pd.DataFrame:
+    """Convert a dataframe of metrics from wide to long
+
+    Args:
+        metric_df (pd.DataFrame): Wide dataframe to convert
+        metric (str): Metric name, will become name of column holding
+            metric values
+
+    Returns:
+        pd.DataFrame: Long metric dataframe
+    """
     df = metric_df.melt(var_name="model", value_name=metric)
     df[["TD", "MSS"]] = df["model"].str.split("_", expand=True)
     df["TD"] = df["TD"].str.slice(2)
@@ -132,7 +154,14 @@ def metric_wide_to_long(metric_df, metric):
     return df.drop("model", axis=1)
 
 
-def plot_metric_box_plot(metric_df, metric):
+def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str) -> None:
+    """Box plot where X is tree depth, y is the metric, boxes are colored by
+        MSS, and whiskers are set to 10% and 90%
+
+    Args:
+        metric_df (pd.DataFrame): Metric dataframe to plot
+        metric (str): Name of metric to plot
+    """
     df = metric_wide_to_long(metric_df, metric)
     fg = sns.catplot(
         data=df,
@@ -150,29 +179,26 @@ def plot_metric_box_plot(metric_df, metric):
     plt.show()
 
 
-def plot_single_model_metrics(df):
+def plot_single_model_metrics(df: pd.DataFrame) -> None:
+    """Model metrics (nnse, nrmse) for testing reservoirs.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing model data.
+    """
     grand_names = load_grand_db()
-    test_nse = get_nse(df, "actual", "test", grouper="res_id")
+    get_nnse = getattr(metric_funcs, "get_nnse")
+    get_nrmse = getattr(metric_funcs, "get_nrmse")
+
     test_nnse = get_nnse(df, "actual", "test", grouper="res_id")
     test_nrmse = get_nrmse(df, "actual", "test", grouper="res_id")
-    simmed_nse = get_nse(df, "actual", "simmed", grouper="res_id")
     simmed_nnse = get_nnse(df, "actual", "simmed", grouper="res_id")
     simmed_nrmse = get_nrmse(df, "actual", "simmed", grouper="res_id")
 
-    from IPython import embed as II
-
-    II()
-    import sys
-
-    sys.exit()
-    nse = pd.DataFrame.from_dict({"test": test_nse, "simmed": simmed_nse})
     nnse = pd.DataFrame.from_dict({"test": test_nnse, "simmed": simmed_nnse})
     nrmse = pd.DataFrame.from_dict({"test": test_nrmse, "simmed": simmed_nrmse})
 
-    nse = nse.reset_index().melt(id_vars="res_id")
     nnse = nnse.reset_index().melt(id_vars="res_id")
     nrmse = nrmse.reset_index().melt(id_vars="res_id")
-    nse["metric"] = "nse"
     nnse["metric"] = "nnse"
     nrmse["metric"] = "nrmse"
 
@@ -211,15 +237,16 @@ def plot_single_model_metrics(df):
     plt.show()
 
 
-def compare_training_testing_data(results, min_years):
-    # meta = load_feather(
-    #     config.get_file("current_model_meta"), index_keys=("res_id",)
-    # )
+def compare_training_testing_data(results: dict, min_years: int) -> None:
+    """Plot ECDF for residence time, maximum storage, release CV
+    release_pre, inflow, and storage_pre for both the training and
+    testing sets.
 
-    # mr_data = load_feather(
-    #     config.get_file("current_model_data"), index_keys=(["res_id", "date"])
-    # )
-
+    Args:
+        results (dict): Dictionary containing results (from load_model_results)
+        min_years (int): minimum number of years that was used to create
+            the data set of interest
+    """
     mr_data, meta = load_resopsus_data(min_years)
 
     test_df = get_data_from_results(results, dataset="test")
@@ -253,7 +280,20 @@ def compare_training_testing_data(results, min_years):
     plt.show()
 
 
-def setup_map(ax=None, coords=None, other_bound=None):
+def setup_map(ax=None, coords=None, other_bound=None) -> Basemap:
+    """Generate a map with many common elements
+
+    Args:
+        ax (plt.axes, optional): Axes to plot on, if none, the current
+            axis is used. Defaults to None.
+        coords (tuple, optional): Bounding box for the map, if None will
+            use (-127.4414, 24.2071, -66.0938, 49.3824). Defaults to None.
+        other_bound (list, optional): Other bounds to add.
+            [(path to shapefile, color)...]. Defaults to None.
+
+    Returns:
+        Basemap: basemap instance that can be used to modify the map
+    """
     if not ax:
         ax = plt.gca()
 
@@ -340,6 +380,11 @@ def setup_map(ax=None, coords=None, other_bound=None):
 
 
 def get_contiguous_wbds():
+    """Get path to shapefiles to all contiguous watershed boundaries
+
+    Returns:
+        list: Paths to shapefiles
+    """
     WBD_DIR = GIS_DIR / "WBD"
     file = "WBD_{:02}_HU2_Shape/Shape/WBDHU2"
     bounds_files = [(WBD_DIR / file.format(i)).as_posix() for i in range(1, 19)]
@@ -347,6 +392,11 @@ def get_contiguous_wbds():
 
 
 def setup_wbd_map():
+    """Setup map with watershed boundaries
+
+    Returns:
+        tuple: figure, axes, Basemap
+    """
     fig, ax = plt.subplots(1, 1)
     wbds = get_contiguous_wbds()
 

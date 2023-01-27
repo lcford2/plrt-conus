@@ -34,7 +34,8 @@ class ConfigObject:
             "merged_meta": self.dirs["model_ready_data"]
             / f"merged_meta.{self.pandas_format}",
             "grand_file": self.dirs["general_data"]
-            / grand_name / "GRanD_reservoirs_v1_3.shp"
+            / grand_name
+            / "GRanD_reservoirs_v1_3.shp",
         }
 
         self.files["current_model_data"] = self.files["merged_data"]
@@ -68,7 +69,6 @@ class ConfigObject:
         if file_key not in self.files:
             raise KeyError(f"{file_key} is not valid.")
         return self.files[file_key]
-
 
 
 if socket.gethostname() == "CCEE-DT-094":
