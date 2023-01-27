@@ -1,11 +1,23 @@
 {
 	"folders": [
 		{
-			"path": ".."
+			"path": "."
 		},
 		{
 			"path": "../../plrt"
 		}
 	],
-	"settings": {}
+	"settings": {
+        "python.formatting.provider": "black",
+        "python.formatting.blackArgs": [
+            "--line-length", "80"
+        ],
+        "isort.args": [
+            "--line-length", "80", "--trailing-comma",
+            "--formatter", "black"
+        ],
+        "python.analysis.completeFunctionParens": true,
+        "editor.tabCompletion": "on",
+        "editor.tabSize": 4,
+    }
 }
