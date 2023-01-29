@@ -414,14 +414,15 @@ def setup_wbd_map():
     return fig, ax, m
 
 
-def plot_training_testing_map(results, min_years):
+def plot_training_testing_map(results: dict, min_years: int) -> None:
+    """Plot map of training and testing reservoir locations
+
+    Args:
+        results (dict): Results dictionary (from load_model_results)
+        min_years (int): Number of years to create data set
+    """
     fig, ax, m = setup_wbd_map()
     grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
-    # big_grand = gpd.read_file(
-    #     config.get_dir("general_data")
-    #     / "GRanD_Version_1_3"
-    #     / "GRanD_reservoirs_v1_3.shp"
-    # )
     big_grand = gpd.read_file(config.get_file("grand_file"))
 
     big_grand["GRAND_ID"] = big_grand["GRAND_ID"].astype(str)
@@ -483,7 +484,15 @@ def plot_training_testing_map(results, min_years):
     plt.show()
 
 
-def plot_data_diff_map(results, year1, year2):
+def plot_data_diff_map(year1: int, year2: int) -> None:
+    """Plot a map of the different available reservoirs between year1 and year2
+
+    Datasets that are created using minimum of year1 and year2.
+
+    Args:
+        year1 (int): First year to plot
+        year2 (int): Second year to plot
+    """
     fig, ax, m = setup_wbd_map()
     grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
     big_grand = gpd.read_file(config.get_file("grand_file"))
