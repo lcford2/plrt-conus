@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 
-calc_type = Union(np.array, pd.Series)
+calc_type = Union[np.array, pd.Series]
 
 
 def nrmse(actual: calc_type, model: calc_type) -> float:
