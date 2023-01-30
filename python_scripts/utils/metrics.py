@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import mean_squared_error, r2_score
 
-calc_type = Union(np.array, pd.Series)
+calc_type = Union[np.array, pd.Series]
 
 
 def nrmse(actual: calc_type, model: calc_type) -> float:
@@ -54,7 +54,7 @@ def get_nse(
     Returns:
         pd.Series: NSE Values
     """
-    if grouper:
+    if grouper is not None:
         scores = df.groupby(grouper).apply(
             lambda x: r2_score(x[actual], x[model])
         )
@@ -81,7 +81,7 @@ def get_nnse(
     Returns:
         pd.Series: NNSE Values
     """
-    if grouper:
+    if grouper is not None:
         scores = df.groupby(grouper).apply(lambda x: nnse(x[actual], x[model]))
     else:
         scores = nnse(df[actual], df[model])
@@ -106,7 +106,7 @@ def get_rmse(
     Returns:
         pd.Series: RMSE Values
     """
-    if grouper:
+    if grouper is not None:
         scores = df.groupby(grouper).apply(
             lambda x: mean_squared_error(x[actual], x[model], squared=False)
         )
@@ -133,7 +133,7 @@ def get_nrmse(
     Returns:
         pd.Series: NRMSE Values
     """
-    if grouper:
+    if grouper is not None:
         scores = df.groupby(grouper).apply(lambda x: nrmse(x[actual], x[model]))
     else:
         scores = nrmse(df[actual], df[model])
