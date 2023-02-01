@@ -6,6 +6,7 @@ import pathlib
 import pickle
 from datetime import datetime, timedelta
 from multiprocessing import cpu_count
+from time import perf_counter as timer
 
 CPUS = cpu_count()
 nprocs_per_job = 2
@@ -21,6 +22,7 @@ from plrt import PieceWiseLinearRegressionTree
 from sklearn.metrics import mean_squared_error, r2_score
 from utils.config import config
 from utils.io import load_feather
+from utils.metrics import get_nnse
 from utils.timing_function import time_function
 from utils.utils import my_groupby
 
@@ -123,6 +125,7 @@ def get_max_date_span(in_df):
     return (span.min(), span.max())
 
 
+@time_function
 def load_resopsus_data(min_years):
     # if min_years == 5:
     #     data_file = config.get_file("merged_data")
@@ -288,7 +291,8 @@ def merge_mb_and_resops(df):
 
 
 def unstandardize(series, mean, std):
-    if len(mean.index.levels) > 1:
+    monthly = hasattr(mean.index, "nlevels") & mean.index.nlevels > 1
+    if monthly:
         idx = pd.IndexSlice
         umean = mean.unstack()
         ustd = std.unstack()
@@ -311,6 +315,7 @@ def unstandardize(series, mean, std):
 
 
 def pipeline(args):
+    START_TIME = timer()
     # month_intercepts = args.month_ints
     max_depth = args.max_depth
 
@@ -363,7 +368,10 @@ def pipeline(args):
     # train_index = X[X.index.get_level_values(1) < datetime(2010, 1, 1)].index
     # test_index = X[X.index.get_level_values(1) >= datetime(2010, 1, 1)].index
     # train_index, test_index = split_train_test_index_by_res(X, prop=0.8)
-    print("Splitting testing and training reservoirs")
+    elapsed = timer() - START_TIME
+    print(
+        f"Splitting testing and training reservoirs [{elapsed:.1f} sec elapsed]"
+    )
     np.random.seed(44)
     train_fraction = 0.8
     basin_train, basin_test = split_train_test_by_basin(
@@ -379,7 +387,8 @@ def pipeline(args):
     # train_res = np.random.choice(reservoirs, n_train_res, replace=False)
     # test_res = [i for i in reservoirs if i not in train_res]
 
-    print("Getting training and testing data set")
+    elapsed = timer() - START_TIME
+    print(f"Getting training and testing data set [{elapsed:.1f} sec elapsed]")
     X_train = X.loc[
         X.index.get_level_values(0).isin(train_res), X_vars
     ].sort_index()
@@ -453,6 +462,8 @@ def pipeline(args):
             min_samples_split=min_samples_split,
         )
 
+        elapsed = timer() - START_TIME
+        print(f"Fitting model [{elapsed:.1f} sec elapsed]")
         time_function(model.fit)()
 
         params, groups = get_params_and_groups(X_train, model)
@@ -470,8 +481,10 @@ def pipeline(args):
             columns=X_vars,
         )
 
-        fitted = model.predict()
-        preds = model.predict(X_test)
+        fitted = time_function(model.predict)()
+        preds = time_function(model.predict)(X_test)
+        elapsed = timer() - START_TIME
+        print(f"Simulating model [{elapsed:.1f} sec elapsed]")
         simuled = simulate_plrt_model(
             model,
             "model",
@@ -513,6 +526,8 @@ def pipeline(args):
         )
         simuled = simuled[["release", "storage"]].dropna()
 
+    elapsed = timer() - START_TIME
+    print(f"Preparing Output [{elapsed:.1f} sec elapsed]")
     fitted = pd.Series(fitted, index=X_train.index)
     preds = pd.Series(preds, index=X_test.index)
     simmed = simuled["release"]
@@ -602,15 +617,24 @@ def pipeline(args):
     test_data = pd.DataFrame(dict(actual=y_test_act, model=preds_act))
     simmed_data = pd.DataFrame(dict(actual=y_test_sim, model=simmed))
 
-    train_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE"])
-    test_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE"])
-    simmed_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE"])
+    train_res_scores = pd.DataFrame(
+        index=reservoirs, columns=["NSE", "RMSE", "NNSE"]
+    )
+    test_res_scores = pd.DataFrame(
+        index=reservoirs, columns=["NSE", "RMSE", "NNSE"]
+    )
+    simmed_res_scores = pd.DataFrame(
+        index=reservoirs, columns=["NSE", "RMSE", "NNSE"]
+    )
 
     train_res_scores["NSE"] = my_groupby(train_data, train_res_grouper).apply(
         lambda x: r2_score(x["actual"], x["model"])
     )
     train_res_scores["RMSE"] = my_groupby(train_data, train_res_grouper).apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
+    )
+    train_res_scores["NNSE"] = get_nnse(
+        train_data, "actual", "model", train_res_grouper
     )
 
     results["train_res_scores"] = train_res_scores
@@ -620,6 +644,9 @@ def pipeline(args):
     )
     test_res_scores["RMSE"] = my_groupby(test_data, test_res_grouper).apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
+    )
+    test_res_scores["NNSE"] = get_nnse(
+        test_data, "actual", "model", test_res_grouper
     )
 
     results["test_res_scores"] = test_res_scores
@@ -632,19 +659,15 @@ def pipeline(args):
     ).apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
     )
+    simmed_res_scores["NNSE"] = get_nnse(
+        simmed_data, "actual", "model", simmed_res_grouper
+    )
 
     results["simmed_res_scores"] = simmed_res_scores
 
-    # print(test_res_scores.to_markdown(floatfmt="0.3f"))
-    # print(simmed_res_scores.to_markdown(floatfmt="0.3f"))
-    # print(
-    #     f"{simmed_res_scores['NSE'].mean():.3f}",
-    #     f"{simmed_res_scores['NSE'].median():.3f}",
-    #     f"{simmed_res_scores['NSE'].std():.3f}",
-    # )
-    print(simmed_res_scores["NSE"].describe().to_markdown(floatfmt="0.3f"))
+    print(simmed_res_scores.describe().to_markdown(floatfmt="0.3f"))
 
-    train_quant, train_bins = pd.qcut(
+    train_quant, _ = pd.qcut(
         train_data["actual"], 3, labels=False, retbins=True
     )
     quant_scores = pd.DataFrame(index=[0, 1, 2], columns=["NSE", "RMSE"])
@@ -657,9 +680,7 @@ def pipeline(args):
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
     )
 
-    test_quant, test_bins = pd.qcut(
-        test_data["actual"], 3, labels=False, retbins=True
-    )
+    test_quant, _ = pd.qcut(test_data["actual"], 3, labels=False, retbins=True)
     quant_scores = pd.DataFrame(index=[0, 1, 2], columns=["NSE", "RMSE"])
     test_data["bin"] = test_quant
 
@@ -729,6 +750,8 @@ def pipeline(args):
 
     # write the random effects to a csv file for easy access
     coefs.to_csv((folderpath / "random_effects.csv").as_posix())
+    elapsed = timer() - START_TIME
+    print(f"Total elapsed time {elapsed:.1f} sec")
 
 
 def simulate_plrt_model(
@@ -806,8 +829,6 @@ def simulate_plrt_model(
                 lower_bounds,
                 upper_bounds,
                 assim,
-                preds,
-                X_test,
             )
             for res in resers
         )
@@ -827,8 +848,6 @@ def simulate_plrt_model(
                     lower_bounds,
                     upper_bounds,
                     assim,
-                    preds,
-                    X_test,
                 )
             )
     return pd.concat(outputdfs)
@@ -846,8 +865,6 @@ def simul_reservoir(
     lower_bounds,
     upper_bounds,
     assim=None,
-    preds=None,
-    X_test=None,
 ):
     idx = pd.IndexSlice
     rdf = track_df.loc[idx[res, :], :].copy(deep=True)
@@ -881,7 +898,12 @@ def simul_reservoir(
         idx[res, dates[0]], "storage_roll7"
     ]
 
-    monthly = len(means.index.levels) > 1
+    # monthly = False
+    # if hasattr(means.index, "levels"):
+    #     if len(means.index.nlevels) > 1:
+    #         monthly = True
+
+    monthly = hasattr(means.index, "nlevels") & means.index.nlevels > 1
 
     for date in dates:
         loc = idx[res, date]
@@ -892,6 +914,8 @@ def simul_reservoir(
         X_r["storage_x_inflow"] = X_r["storage_pre"] * X_r["inflow"]
         X_r["release_pre2"] = X_r["release_pre"] * X_r["release_pre"]
         # grab actual rt and max_sto values if they exist
+        rts, max_sto = None, None
+        res_vars = False
         try:
             rts, max_sto = X_r[["rts", "max_sto"]]
             res_vars = True
@@ -950,12 +974,6 @@ def simul_reservoir(
 
             ipdb.set_trace()
 
-        # if abs(release - preds.loc[loc]) > 0.000001:
-        #     print(res, date, release, preds.loc[loc])
-        # if date - np.timedelta64(7, "D"):
-        #     sys.exit()
-        # else:
-        #     II()
         # get release back to actual space
         if monthly:
             release_act = (
@@ -1021,13 +1039,6 @@ def simul_reservoir(
                 idx[res, prev_seven], "release_pre"
             ].mean()
             rdf.loc[idx[res, tomorrow], :] = rdf.loc[idx[res, tomorrow], :]
-        # if counter < 10:
-        #     II()
-        #     counter += 1
-        # else:
-        #     import sys
-        #     sys.exit()
-        # print(rdf.loc[loc, :].T)
         rdf.loc[loc, :] = rdf.loc[loc, :]
     return rdf
 
@@ -1036,12 +1047,6 @@ def parse_args(arg_list=None):
     parser = argparse.ArgumentParser(
         description="Fit and test a PLRT model to specified data"
     )
-    # parser.add_argument(
-    #     "basin",
-    #     default=None,
-    #     choices=["tva", "colorado", "pnw", "missouri", "all"],
-    #     help="What basin should be modeled",
-    # )
     parser.add_argument(
         "-d",
         "--max_depth",
@@ -1057,15 +1062,6 @@ def parse_args(arg_list=None):
         type=int,
         help="How many years of data is required for a reservoir to be valid?",
     )
-    # parser.add_argument(
-    #     "-m",
-    #     "--month_ints",
-    #     dest="month_ints",
-    #     action="store_true",
-    #     default=False,
-    #     help="Should monthly varying intercepts be included"
-    #     "as regression variables? (default=False)",
-    # )
     parser.add_argument(
         "--assim",
         default=None,
