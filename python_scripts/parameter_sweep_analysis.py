@@ -8,6 +8,7 @@ import seaborn as sns
 import utils.metrics as metric_funcs
 from fit_plrt_model import load_resopsus_data
 from mpl_toolkits.basemap import Basemap
+from plrt import load_model
 from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
 from utils.plot_tools import get_pretty_var_name, mxbline
@@ -145,18 +146,28 @@ def calculate_metrics(
     return output
 
 
-def metric_wide_to_long(metric_df: pd.DataFrame, metric: str) -> pd.DataFrame:
+def metric_wide_to_long(
+    metric_df: pd.DataFrame, metric: str, keep_index=False
+) -> pd.DataFrame:
     """Convert a dataframe of metrics from wide to long
 
     Args:
         metric_df (pd.DataFrame): Wide dataframe to convert
         metric (str): Metric name, will become name of column holding
             metric values
+        keep_index (bool, default=False): Indicate if the index of metric_df
+            should be retained
 
     Returns:
         pd.DataFrame: Long metric dataframe
     """
-    df = metric_df.melt(var_name="model", value_name=metric)
+    if keep_index:
+        index_name = metric_df.index.name
+        df = metric_df.reset_index().melt(
+            id_vars=[index_name], var_name="model", value_name=metric
+        )
+    else:
+        df = metric_df.melt(var_name="model", value_name=metric)
     df[["TD", "MSS"]] = df["model"].str.split("_", expand=True)
     df["TD"] = df["TD"].str.slice(2)
     df["MSS"] = df["MSS"].str.slice(3)
@@ -189,6 +200,40 @@ def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str) -> None:
         ax.axhline(0.5)
     ax.legend(title="MSS", loc="lower left", ncol=5)
     plt.show()
+
+
+def make_parameter_sweep_comparison(metric_dict: dict, metric: str) -> None:
+    metrics = metric_wide_to_long(metric_dict[metric], metric)
+
+    cmp_metrics = metrics.groupby(["TD", "MSS"]).mean()
+    cmp_metrics = cmp_metrics.rename(columns={metric: "mean"})
+    cmp_metrics["median"] = metrics.groupby(["TD", "MSS"]).median()
+    cmp_metrics["std"] = metrics.groupby(["TD", "MSS"]).std()
+    cmp_metrics["min"] = metrics.groupby(["TD", "MSS"]).min()
+    cmp_metrics["max"] = metrics.groupby(["TD", "MSS"]).max()
+
+    cmp_rank = cmp_metrics[["mean", "median", "min", "max"]].rank(
+        method="min", ascending=True
+    )
+    cmp_rank["std"] = cmp_metrics["std"].rank(method="min")
+
+    weights = pd.Series(
+        {"mean": 1.5, "median": 1.5, "min": 2, "std": 1, "max": 1}
+    )
+    cmp_wrank = cmp_rank * weights
+
+    cmp_rank["score"] = cmp_rank.sum(axis=1)
+    cmp_rank = cmp_rank.sort_values(by="score", ascending=False)
+    cmp_wrank["score"] = cmp_wrank.sum(axis=1)
+    cmp_wrank = cmp_wrank.sort_values(by="score", ascending=False)
+    print(
+        cmp_metrics.loc[cmp_rank.tail(10).index, :].to_markdown(floatfmt="0.3f")
+    )
+    print(
+        cmp_metrics.loc[cmp_wrank.tail(10).index, :].to_markdown(
+            floatfmt="0.3f"
+        )
+    )
 
 
 def plot_single_model_metrics(df: pd.DataFrame) -> None:
@@ -554,22 +599,24 @@ def plot_data_diff_map(year1: int, year2: int) -> None:
 
 
 def plot_monthly_vs_longterm_mean_models():
-    monthly_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
-    longterm_dir = config.get_dir("results") / "merged_data_set_minyr3"
-    monthly_results = load_model_results_from_list(monthly_dir.iterdir())
-    longterm_results = load_model_results_from_list(longterm_dir.iterdir())
-    monthly_data = get_data_from_results(monthly_results, dataset="simmed")
-    longterm_data = get_data_from_results(longterm_results, dataset="simmed")
+    # monthly_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
+    # longterm_dir = config.get_dir("results") / "merged_data_set_minyr3"
+    # monthly_results = load_model_results_from_list(monthly_dir.iterdir())
+    # longterm_results = load_model_results_from_list(longterm_dir.iterdir())
+    # monthly_data = get_data_from_results(monthly_results, dataset="simmed")
+    # longterm_data = get_data_from_results(longterm_results, dataset="simmed")
 
     monthly_metrics = calculate_metrics(
-        monthly_data,
+        # monthly_data,
+        "",
         data_set="simmed",
         metrics=("nnse",),
         recalc=False,
         cache_prepend="monthly_3",
     )
     longterm_metrics = calculate_metrics(
-        longterm_data,
+        # longterm_data,
+        "",
         data_set="simmed",
         metrics=("nnse",),
         recalc=False,
@@ -645,21 +692,94 @@ def plot_monthly_vs_longterm_mean_models():
     plt.show()
 
 
-if __name__ == "__main__":
-    sns.set_theme(context="notebook", palette="Set2")
+def parse_tree_structure(node, nodelist, conlist):
+    nodelist.append((node._ID, node.best_feat, node.best_val))
 
-    # model_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
-    # results = load_model_results_from_list(model_dir.iterdir())
-    # simmed_data = get_data_from_results(results, dataset="simmed")
-    # metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
+    if node.left:
+        child = node.left
+        cid = child._ID
+        conlist.append((node._ID, cid))
+        parse_tree_structure(child, nodelist, conlist)
+
+    if node.right:
+        child = node.right
+        cid = child._ID
+        conlist.append((node._ID, cid))
+        parse_tree_structure(child, nodelist, conlist)
+
+
+def translate_tree_splitting_values(model_dir):
+    tree = load_model(model_dir / "model.pickle")
+    feats = tree.feats
+    calc_feats = feats.copy()
+    calc_feats.remove("rts")
+    calc_feats.remove("max_sto")
+
+    nodelist, conlist = [], []
+    parse_tree_structure(tree, nodelist, conlist)
+
+    # from fit_plrt_model import load_resopsus_data, prep_data
+    # df, meta = load_resopsus_data(3)
+    # X, y, means, std = prep_data(df, monthly=True)
+
+    x = tree.X
+    for nid, feat, value in nodelist:
+        if feat:
+            feat_name = feats[feat]
+            # if feat_name in calc_feats:
+            q = (x[:, feat] < value).mean()
+            print(
+                f"{nid:02}", feat_name.center(20), f"{value:+8.3f}", f"{q:.0%}"
+            )
+
+
+def correlate_res_metrics(metrics: dict, metric: str):
+    df = metrics[metric]
+    df = metric_wide_to_long(df, metric=metric, keep_index=True)
+    df["TD"] = df["TD"].astype(int)
+    df["MSS"] = df["MSS"].astype(float)
+    corrs = df.groupby("res_id").corr()[metric].unstack()
+
+    hucs = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather",
+        index_keys=("res_id",),
+    )
+
+    corrs["basin"] = hucs
+
+    sns.relplot(
+        data=corrs,
+        x="TD",
+        y="MSS",
+        hue="basin",
+        kind="scatter",
+        legend="full",
+        palette="Set2",
+        facet_kws={"legend_out": False},
+    )
+    plt.show()
+
+
+if __name__ == "__main__":
+    sns.set_theme(context="talk", palette="Set2")
+
+    model_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
+    model = "TD5_MSS0.02"
+    # translate_tree_splitting_values(model_dir / model)
+    results = load_model_results_from_list(model_dir.iterdir())
+    simmed_data = get_data_from_results(results, dataset="simmed")
+    metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
     # plot_metric_box_plot(metrics["nnse"], "NNSE")
 
-    # df = get_data_from_results(results, dataset="simmed")
-    # df = df.rename(columns={model: "simmed"})
+    # make_parameter_sweep_comparison(metrics, "nnse")
+
+    # df = simmed_data.rename(columns={model: "simmed"})
     # df["test"] = get_data_from_results(results, dataset="test")[model]
     # plot_single_model_metrics(df)
 
     # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)
 
-    plot_monthly_vs_longterm_mean_models()
+    # plot_monthly_vs_longterm_mean_models()
+
+    correlate_res_metrics(metrics, "nnse")
