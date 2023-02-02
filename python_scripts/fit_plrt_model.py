@@ -315,7 +315,7 @@ def unstandardize(series, mean, std):
 
 
 def pipeline(args):
-    START_TIME = timer()
+    start_time = timer()
     # month_intercepts = args.month_ints
     max_depth = args.max_depth
 
@@ -368,7 +368,7 @@ def pipeline(args):
     # train_index = X[X.index.get_level_values(1) < datetime(2010, 1, 1)].index
     # test_index = X[X.index.get_level_values(1) >= datetime(2010, 1, 1)].index
     # train_index, test_index = split_train_test_index_by_res(X, prop=0.8)
-    elapsed = timer() - START_TIME
+    elapsed = timer() - start_time
     print(
         f"Splitting testing and training reservoirs [{elapsed:.1f} sec elapsed]"
     )
@@ -387,7 +387,7 @@ def pipeline(args):
     # train_res = np.random.choice(reservoirs, n_train_res, replace=False)
     # test_res = [i for i in reservoirs if i not in train_res]
 
-    elapsed = timer() - START_TIME
+    elapsed = timer() - start_time
     print(f"Getting training and testing data set [{elapsed:.1f} sec elapsed]")
     X_train = X.loc[
         X.index.get_level_values(0).isin(train_res), X_vars
@@ -462,7 +462,7 @@ def pipeline(args):
             min_samples_split=min_samples_split,
         )
 
-        elapsed = timer() - START_TIME
+        elapsed = timer() - start_time
         print(f"Fitting model [{elapsed:.1f} sec elapsed]")
         time_function(model.fit)()
 
@@ -483,7 +483,7 @@ def pipeline(args):
 
         fitted = time_function(model.predict)()
         preds = time_function(model.predict)(X_test)
-        elapsed = timer() - START_TIME
+        elapsed = timer() - start_time
         print(f"Simulating model [{elapsed:.1f} sec elapsed]")
         simuled = simulate_plrt_model(
             model,
@@ -526,7 +526,7 @@ def pipeline(args):
         )
         simuled = simuled[["release", "storage"]].dropna()
 
-    elapsed = timer() - START_TIME
+    elapsed = timer() - start_time
     print(f"Preparing Output [{elapsed:.1f} sec elapsed]")
     fitted = pd.Series(fitted, index=X_train.index)
     preds = pd.Series(preds, index=X_test.index)
@@ -750,7 +750,7 @@ def pipeline(args):
 
     # write the random effects to a csv file for easy access
     coefs.to_csv((folderpath / "random_effects.csv").as_posix())
-    elapsed = timer() - START_TIME
+    elapsed = timer() - start_time
     print(f"Total elapsed time {elapsed:.1f} sec")
 
 
