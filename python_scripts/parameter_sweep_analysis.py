@@ -10,7 +10,7 @@ from fit_plrt_model import load_resopsus_data
 from mpl_toolkits.basemap import Basemap
 from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
-from utils.plot_tools import get_pretty_var_name
+from utils.plot_tools import get_pretty_var_name, mxbline
 
 PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
 GIS_DIR = config.get_dir("general_data") / "GIS"
@@ -37,10 +37,10 @@ def load_model_results(model_dir: str | pathlib.Path) -> dict:
     Returns:
         _type_: _description_
     """
-    if isinstance(model_dir, pathlib.Path):
-        model_dir = model_dir.as_posix()
+    if isinstance(model_dir, str):
+        model_dir = pathlib.Path(model_dir)
 
-    return {model_dir.name: load_results(model_dir.as_posix())}
+    return load_results(model_dir.as_posix())
 
 
 def load_model_results_from_list(model_dirs: list) -> dict:
@@ -87,7 +87,11 @@ def get_data_from_results(results: dict, dataset="simmed") -> pd.DataFrame:
 
 
 def calculate_metrics(
-    data: pd.DataFrame, data_set: str, metrics=("nnse", "rmse"), recalc=False
+    data: pd.DataFrame,
+    data_set: str,
+    metrics=("nnse", "rmse"),
+    recalc=False,
+    cache_prepend="",
 ) -> dict:
     """Calculate model performance metrics on the data provided
 
@@ -104,7 +108,12 @@ def calculate_metrics(
         dict: keys are `metrics`, values are metric data frames where each
             column refers to a model
     """
-    file_name = "_".join([data_set, *metrics])
+    if cache_prepend:
+        file_name_list = [cache_prepend, data_set, *metrics]
+    else:
+        file_name_list = [data_set, *metrics]
+
+    file_name = "_".join(file_name_list)
     metrics_file = (
         config.get_dir("agg_results")
         / "parameter_sweep"
@@ -175,6 +184,9 @@ def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str) -> None:
         palette="Set2",
     )
     ax = fg.ax
+
+    if metric == "NNSE":
+        ax.axhline(0.5)
     ax.legend(title="MSS", loc="lower left", ncol=5)
     plt.show()
 
@@ -541,32 +553,113 @@ def plot_data_diff_map(year1: int, year2: int) -> None:
     plt.show()
 
 
+def plot_monthly_vs_longterm_mean_models():
+    monthly_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
+    longterm_dir = config.get_dir("results") / "merged_data_set_minyr3"
+    monthly_results = load_model_results_from_list(monthly_dir.iterdir())
+    longterm_results = load_model_results_from_list(longterm_dir.iterdir())
+    monthly_data = get_data_from_results(monthly_results, dataset="simmed")
+    longterm_data = get_data_from_results(longterm_results, dataset="simmed")
+
+    monthly_metrics = calculate_metrics(
+        monthly_data,
+        data_set="simmed",
+        metrics=("nnse",),
+        recalc=False,
+        cache_prepend="monthly_3",
+    )
+    longterm_metrics = calculate_metrics(
+        longterm_data,
+        data_set="simmed",
+        metrics=("nnse",),
+        recalc=False,
+        cache_prepend="longterm_3",
+    )
+
+    monthly_metrics = metric_wide_to_long(monthly_metrics["nnse"], "monthly")
+    longterm_metrics = metric_wide_to_long(longterm_metrics["nnse"], "longterm")
+
+    metrics = monthly_metrics.set_index(["TD", "MSS"])
+    longterm_metrics = longterm_metrics.set_index(["TD", "MSS"])
+
+    metrics["longterm"] = longterm_metrics["longterm"]
+    metrics = metrics.reset_index()
+    metrics_melt = metrics.melt(id_vars=["TD", "MSS"])
+    fg = sns.catplot(
+        data=metrics_melt,
+        x="TD",
+        y="value",
+        hue="MSS",
+        row="variable",
+        palette="Set2",
+        kind="box",
+        whis=(10, 90),
+        legend_out=False,
+        showfliers=True,
+    )
+
+    for ax in fg.axes.flatten():
+        ax.axhline(0.5)
+    fg.axes.flatten()[0].legend(title="MSS", loc="lower left", ncol=5)
+    fg.set_ylabels("NNSE")
+    plt.show()
+    fg = sns.relplot(
+        data=metrics,
+        x="longterm",
+        y="monthly",
+        hue="MSS",
+        style="TD",
+        palette="Set2",
+        kind="scatter",
+        facet_kws={"legend_out": False},
+    )
+    ax = fg.ax
+    mxbline(1, 0, ax, linestyle="--", color="k")
+
+    ax.set_xlabel("NNSE - Longterm Standardization")
+    ax.set_ylabel("NNSE - Monthly Standardization")
+    plt.show()
+
+    metrics = (
+        metrics.groupby(["TD", "MSS"])[["monthly", "longterm"]]
+        .quantile([0.05, 0.25, 0.5, 0.75, 0.95])
+        .reset_index()
+    )
+    metrics = metrics.rename(columns={"level_2": "Quantile"})
+    metrics = metrics.melt(id_vars=["TD", "MSS", "Quantile"])
+
+    fg = sns.catplot(
+        data=metrics,
+        x="Quantile",
+        y="value",
+        # hue="MSS",
+        # style="variable",
+        palette="Set2",
+        hue="variable",
+        col="TD",
+        col_wrap=3,
+        kind="box",
+        facet_kws={"legend_out": False},
+    )
+    fg.set_ylabels("NNSE")
+    plt.show()
+
+
 if __name__ == "__main__":
-    # plt.style.use("ggplot")
-    sns.set_theme(context="talk", palette="Set2")
-    # results = load_model_results()
+    sns.set_theme(context="notebook", palette="Set2")
+
+    # model_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
+    # results = load_model_results_from_list(model_dir.iterdir())
     # simmed_data = get_data_from_results(results, dataset="simmed")
     # metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
-    # nse, rmse = metrics["nse"], metrics["nrmse"]
-    # plot_metric_box_plot(nse, "NSE")
+    # plot_metric_box_plot(metrics["nnse"], "NNSE")
 
-    import sys
-
-    if len(sys.argv) > 1:
-        min_years = sys.argv[1]
-    else:
-        min_years = 3
-
-    model = "TD3_MSS0.04"
-    results = load_model_results(
-        config.get_dir("results")
-        / f"monthly_merged_data_set_minyr{min_years}"
-        / model
-    )
-    df = get_data_from_results(results, dataset="simmed")
-    df = df.rename(columns={model: "simmed"})
-    df["test"] = get_data_from_results(results, dataset="test")[model]
-    plot_single_model_metrics(df)
+    # df = get_data_from_results(results, dataset="simmed")
+    # df = df.rename(columns={model: "simmed"})
+    # df["test"] = get_data_from_results(results, dataset="test")[model]
+    # plot_single_model_metrics(df)
 
     # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)
+
+    plot_monthly_vs_longterm_mean_models()

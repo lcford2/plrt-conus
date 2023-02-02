@@ -1,3 +1,5 @@
+import matplotlib.pyplot as plt
+import numpy as np
 
 _PRETTY_VAR_NAMES_MATH = {
     "rts": r"$RT$",
@@ -23,3 +25,12 @@ def get_pretty_var_name(var, math=True):
         return _PRETTY_VAR_NAMES_MATH.get(var, var)
     else:
         return _PRETTY_VAR_NAMES.get(var, var)
+
+
+def mxbline(m, b, ax=None, **kwargs):
+    if not ax:
+        ax = plt.gca()
+    xmin, xmax = ax.get_xlim()
+    x = np.linspace(xmin, xmax, 100)
+    y = m * x + b
+    ax.plot(x, y, **kwargs)
