@@ -291,7 +291,7 @@ def merge_mb_and_resops(df):
 
 
 def unstandardize(series, mean, std):
-    monthly = hasattr(mean.index, "nlevels") & mean.index.nlevels > 1
+    monthly = hasattr(mean.index, "nlevels") and mean.index.nlevels > 1
     if monthly:
         idx = pd.IndexSlice
         umean = mean.unstack()
@@ -903,7 +903,7 @@ def simul_reservoir(
     #     if len(means.index.nlevels) > 1:
     #         monthly = True
 
-    monthly = hasattr(means.index, "nlevels") & means.index.nlevels > 1
+    monthly = hasattr(means.index, "nlevels") and means.index.nlevels > 1
 
     for date in dates:
         loc = idx[res, date]
