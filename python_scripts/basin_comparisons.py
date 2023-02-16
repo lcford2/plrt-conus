@@ -1,13 +1,21 @@
 import argparse
 import os
+import re
 
+import matplotlib.gridspec as GS
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
-from parameter_sweep_analysis import load_model_results
+from matplotlib.cm import ScalarMappable, get_cmap
+from matplotlib.colors import Normalize
+from parameter_sweep_analysis import (
+    get_contiguous_wbds,
+    load_model_results,
+    setup_map,
+)
 from single_tree_breakdown import get_groups_for_model
 from utils.config import config
-from utils.io import load_huc2_basins, load_huc2_name_map
+from utils.io import load_feather, load_huc2_basins, load_huc2_name_map
 
 
 def parse_args():
@@ -15,7 +23,7 @@ def parse_args():
     parser.add_argument(
         "-b",
         "--basins",
-        nargs=2,
+        nargs="+",
         type=int,
         help="Which two basins should  be compared",
         required=True,
@@ -25,7 +33,7 @@ def parse_args():
         "--model-path",
         dest="model_path",
         help="The model results that should be plotted",
-        required=True,
+        required=False,
     )
     return parser.parse_args()
 
@@ -65,14 +73,14 @@ def plot_basin_tree_breakdown_comparison(basins, results):
 
 def plot_seasonal_tree_breakdown_basin_comparison(basins, results):
     huc2 = load_huc2_basins()
-    huc2_names = load_huc2_name_map()
+    # huc2_names = load_huc2_name_map()
     groups = get_groups_for_model(results)
     groups.name = "group"
     groups = groups.to_frame()
-    # groups["basin"] = [
-    #     huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
-    # ]
-    # groups = groups[groups["basin"].isin(basins)]
+    groups["basin"] = [
+        huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
+    ]
+    groups = groups[groups["basin"].isin(basins)]
     groups["month"] = groups.index.get_level_values(1).month
     groups = groups.reset_index()
     counts = groups.groupby(["res_id", "month"])["group"].value_counts()
@@ -88,55 +96,146 @@ def plot_seasonal_tree_breakdown_basin_comparison(basins, results):
     counts["basin"] = [huc2.loc[i, "name"] for i in counts["res_id"]]
     props = counts.groupby(["basin", "month", "group"])["prop"].mean()
     props *= 100
-    from itertools import combinations
+    # from itertools import combinations
 
-    basins = range(1, 19)
-    basin_pairs = combinations(basins, 2)
-    for b1, b2 in basin_pairs:
-        print(f"Making plot for basins: {b1}, {b2}")
-        bprops = props.loc[idx[[huc2_names[b1], huc2_names[b2]], :, :]]
+    # basins = range(1, 19)
+    # basin_pairs = combinations(basins, 2)
+    # comp_data = {}
+    # for b1, b2 in basin_pairs:
+    #     if 4 in [b1, b2]:
+    #         continue
+    #     print(f"Making plot for basins: {b1}, {b2}")
+    # bprops = props.loc[idx[[huc2_names[b1], huc2_names[b2]], :, :]]
+    # bprops_pivot = (
+    #     bprops.reset_index()
+    #     .pivot(index=["group", "month"], columns="basin")
+    #     .fillna(0.0)
+    # )
+    # diff = bprops_pivot.diff(axis=1)[bprops_pivot.columns[1]].abs().mean()
+    # corr = bprops_pivot.corr().values[0, 1]
+    # from scipy.spatial.distance import cosine
 
-        fg = sns.catplot(
-            data=bprops.reset_index(),
-            x="month",
-            y="prop",
-            hue="basin",
-            col="group",
-            col_wrap=5,
-            kind="bar",
-            legend_out=False,
-            height=5,
-            aspect=0.7,
-        )
+    # comp_data[(b1, b2)] = {
+    #     "diff": diff,
+    #     "corr": corr,
+    #     "cosine": cosine(
+    #         bprops_pivot[bprops_pivot.columns[0]],
+    #         bprops_pivot[bprops_pivot.columns[1]],
+    #     ),
+    # }
+    # continue
 
-        fg.set_ylabels("Group Occ. [%]")
-        fg.set_xlabels("Month")
-        fg.set_titles("Tree Node: {col_name}")
+    fg = sns.catplot(
+        data=props.reset_index(),
+        x="month",
+        y="prop",
+        # hue="basin",
+        col="group",
+        col_wrap=5,
+        kind="box",
+        legend_out=False,
+        height=5,
+        aspect=0.7,
+    )
 
-        plt.subplots_adjust(
-            top=0.963,
-            bottom=0.064,
-            left=0.039,
-            right=0.991,
-            hspace=0.106,
-            wspace=0.051,
-        )
-        output_dir = os.path.expanduser(
-            "~/Dropbox/plrt-conus-figures/basin_comparison"
-        )
-        output_file = f"monthly_basin_compare_{'-'.join(map(str, basins))}.png"
-        plt.savefig("/".join([output_dir, output_file]))
+    fg.set_ylabels("Group Occ. [%]")
+    fg.set_xlabels("Month")
+    fg.set_titles("Tree Node: {col_name}")
+
+    plt.subplots_adjust(
+        top=0.963,
+        bottom=0.064,
+        left=0.039,
+        right=0.991,
+        hspace=0.106,
+        wspace=0.051,
+    )
+    output_dir = os.path.expanduser(
+        "~/Dropbox/plrt-conus-figures/basin_comparison"
+    )
+    basin_string = "-".join(map(str, basins))
+    output_file = f"monthly_basin_compare_{basin_string}_box.png"
+    plt.savefig("/".join([output_dir, output_file]))
+    plt.show()
+
+
+def plot_basin_comparison_map(basin):
+    comp_data = load_feather(
+        config.get_dir("agg_results") / "basin_comp_metrics.feather",
+    )
+    basin_data = comp_data.loc[
+        (comp_data["level_0"] == basin) | (comp_data["level_1"] == basin)
+    ]
+    other_basins = list(set([*basin_data["level_0"], *basin_data["level_1"]]))
+    other_basins.remove(basin)
+    basin_data = basin_data.set_index(["level_0", "level_1"])
+    scores_var = "cosine"
+    scores = {}
+    for obasin in other_basins:
+        try:
+            score = basin_data.loc[pd.IndexSlice[basin, obasin], scores_var]
+        except KeyError:
+            score = basin_data.loc[pd.IndexSlice[obasin, basin], scores_var]
+        scores[obasin] = score
+    scores = pd.Series(scores)
+
+    # fig, ax = plt.subplots(1, 1)
+    fig = plt.figure()
+    gs = GS.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
+    ax = fig.add_subplot(gs[0, 0])
+    cbar_ax = fig.add_subplot(gs[0, 1])
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    norm = Normalize(vmin=scores.min(), vmax=scores.max())
+    cmap = get_cmap("plasma_r")
+    color_vars = []
+    for wbd in wbd_ids:
+        if wbd == "04":
+            color_vars.append("k")
+            continue
+        try:
+            color_vars.append(cmap(norm(scores[int(wbd)])))
+        except KeyError:
+            color_vars.append("w")
+
+    other_bounds = [(b, "k", c) for b, c in zip(wbds, color_vars)]
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+    setup_map(
+        ax=ax, coords=[west, south, east, north], other_bound=other_bounds
+    )
+    plt.colorbar(
+        ScalarMappable(norm=norm, cmap=cmap),
+        cax=cbar_ax,
+        orientation="vertical",
+        label="Cosine Distance",
+        aspect=4,
+        shrink=0.8,
+    )
+    # wbd_gdfs = [gpd.read_file(i+".shp") for i in wbds]
+    # for wbd_id, wbd_gdf in zip(wbd_ids, wbd_gdfs):
+    #     centroid = wbd_gdf.centroid[0]
+    #     x, y = centroid.x, centroid.y
+    #     print(x, y)
+    #     ax.text(x, y, wbd_id)
+    plt.show()
 
 
 if __name__ == "__main__":
     sns.set_theme(context="notebook", palette="Set2")
     args = parse_args()
 
-    model_results = load_model_results(
-        config.get_dir("results")
-        / "monthly_merged_data_set_minyr3"
-        / args.model_path
-    )
+    if args.model_path:
+        model_results = load_model_results(
+            config.get_dir("results")
+            / "monthly_merged_data_set_minyr3"
+            / args.model_path
+        )
     # plot_basin_tree_breakdown_comparison(args.basins, model_results)
     # from itertools import combinations
     # basins = range(1, 19)
@@ -144,3 +243,4 @@ if __name__ == "__main__":
     # for b1, b2 in basin_pairs:
     # plot_seasonal_tree_breakdown_basin_comparison([b1, b2], model_results)
     plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results)
+    # plot_basin_comparison_map(args.basins[0])

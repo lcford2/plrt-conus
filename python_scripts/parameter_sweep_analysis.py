@@ -422,7 +422,13 @@ def setup_map(ax=None, coords=None, other_bound=None) -> Basemap:
     )
 
     if other_bound:
-        for b, c in other_bound:
+        for b, *c in other_bound:
+            if len(c) == 1:
+                c = c
+                fc = "w"
+            else:
+                fc = c[1]
+                c = c[0]
             bound = m.readshapefile(
                 b,
                 "bound",
@@ -430,7 +436,7 @@ def setup_map(ax=None, coords=None, other_bound=None) -> Basemap:
                 color=c,
             )
             # bound[4].set_facecolor("#FF3BC6")
-            bound[4].set_facecolor("w")
+            bound[4].set_facecolor(fc)
             bound[4].set_alpha(1)
             bound[4].set_zorder(2)
     return m
@@ -632,6 +638,8 @@ def plot_monthly_vs_longterm_mean_models():
     metrics["longterm"] = longterm_metrics["longterm"]
     metrics = metrics.reset_index()
     metrics_melt = metrics.melt(id_vars=["TD", "MSS"])
+
+    metrics = metrics[(metrics["TD"] == "4") & (metrics["MSS"] == "0.09")]
     fg = sns.catplot(
         data=metrics_melt,
         x="TD",
@@ -780,6 +788,6 @@ if __name__ == "__main__":
     # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)
 
-    # plot_monthly_vs_longterm_mean_models()
+    plot_monthly_vs_longterm_mean_models()
 
-    correlate_res_metrics(metrics, "nnse")
+    # correlate_res_metrics(metrics, "nnse")
