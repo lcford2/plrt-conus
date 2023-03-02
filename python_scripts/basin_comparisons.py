@@ -1,11 +1,14 @@
 import argparse
 import os
 import re
+from itertools import combinations
 
 import matplotlib.gridspec as GS
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import seaborn as sns
+from joblib import Parallel, delayed
 from matplotlib.cm import ScalarMappable, get_cmap
 from matplotlib.colors import Normalize
 from parameter_sweep_analysis import (
@@ -221,7 +224,7 @@ def plot_basin_comparison_map(basin):
     #     centroid = wbd_gdf.centroid[0]
     #     x, y = centroid.x, centroid.y
     #     print(x, y)
-    #     ax.text(x, y, wbd_id)
+    #     ax.text(x, y, wbd_id)/comp_data
     plt.show()
 
 
@@ -268,6 +271,162 @@ def plot_grouped_basin_map():
     plt.show()
 
 
+def find_similar_basins():
+    comp_data = load_feather(
+        config.get_dir("agg_results") / "basin_comp_metrics.feather",
+    )
+    comp_data = comp_data.pivot(
+        index="level_0", columns="level_1", values="cosine"
+    )
+    all_df = pd.DataFrame(index=range(1, 19), columns=range(1, 19))
+
+    for i in range(1, 18):
+        if i == 4:
+            continue
+        for j in range(2, 19):
+            if j == 4:
+                continue
+            try:
+                value = comp_data.loc[i, j]
+            except KeyError:
+                value = comp_data.loc[j, i]
+
+            if np.isnan(value):
+                value = comp_data.loc[j, i]
+            all_df.loc[i, j] = value
+
+    closests = {}
+
+    for i, row in all_df.iterrows():
+        sort_row = row.sort_values()
+        row_best = sort_row.head(5).index.values
+        closests[i] = (row_best, sort_row[row_best].mean())
+
+    for key, (index, value) in sorted(closests.items(), key=lambda x: x[1][1]):
+        resers = [key, *list(index)]
+        print(*sorted(resers), value)
+
+    basins = list(range(1, 19))
+    basins.remove(4)
+
+    potential_groups = []
+    for n in range(2, 16):
+        potential_groups.extend(combinations(basins, n))
+
+    scores = []
+    for group in potential_groups:
+        gscores = []
+        checked = []
+        for i in group:
+            for j in group:
+                if i == j:
+                    continue
+                index = (min((i, j)), max((i, j)))
+                if index not in checked:
+                    checked.append(index)
+                    gscores.append(comp_data.loc[index])
+        scores.append(np.mean(gscores))
+
+    scores = [(i, j) for i, j in enumerate(scores)]
+    ranked_scores = sorted(scores, key=lambda x: x[1])
+    ranked_groups = [(potential_groups[i], j) for i, j in ranked_scores]
+
+    groups_by_size = {}
+    for i in range(2, 16):
+        sub_groups = [g for g in ranked_groups if len(g[0]) == i]
+        groups_by_size[i] = sub_groups
+
+    best_group = groups_by_size[6][0]
+    for group in groups_by_size[6]:
+        is_next_best = True
+        for b in group[0]:
+            if b in best_group[0]:
+                is_next_best = False
+                break
+        if is_next_best:
+            next_best_group = group
+            break
+
+    remaining = [
+        i for i in basins if i not in [*best_group[0], *next_best_group[0]]
+    ]
+
+    for g in groups_by_size[len(remaining)]:
+        if g[0] == remaining:
+            worst_group = g
+
+    print(best_group, next_best_group, worst_group)
+    # two_group_size = 6
+    # third_group = len(basins) - 2 * two_group_size
+
+    poss_partitions = sorted_k_partitions(basins, 3)
+    filtered = []
+    for part in poss_partitions:
+        is_valid = True
+        for p in part:
+            if len(p) < 2:
+                is_valid = False
+                break
+        if is_valid:
+            filtered.append(part)
+
+    results = Parallel(n_jobs=-1, verbose=11)(
+        delayed(get_part_scores)(part, groups_by_size) for part in filtered
+    )
+    print(results)
+    from IPython import embed as II
+
+    II()
+
+
+def get_part_scores(part, groups_by_size):
+    pscores = []
+    for p in part:
+        for g, s in groups_by_size[len(p)]:
+            pscores.append(s)
+    return pscores
+
+
+def sorted_k_partitions(seq, k):
+    """Returns a list of all unique k-partitions of `seq`.
+
+    Each partition is a list of parts, and each part is a tuple.
+
+    The parts in each individual partition will be sorted in shortlex
+    order (i.e., by length first, then lexicographically).
+
+    The overall list of partitions will then be sorted by the length
+    of their first part, the length of their second part, ...,
+    the length of their last part, and then lexicographically.
+    """
+    n = len(seq)
+    groups = []  # a list of lists, currently empty
+
+    def generate_partitions(i):
+        if i >= n:
+            yield list(map(tuple, groups))
+        else:
+            if n - i > k - len(groups):
+                for group in groups:
+                    group.append(seq[i])
+                    yield from generate_partitions(i + 1)
+                    group.pop()
+
+            if len(groups) < k:
+                groups.append([seq[i]])
+                yield from generate_partitions(i + 1)
+                groups.pop()
+
+    result = generate_partitions(0)
+
+    # Sort the parts in each partition in shortlex order
+    result = [sorted(ps, key=lambda p: (len(p), p)) for ps in result]
+    # Sort partitions by the length of each part, then lexicographically.
+    result = sorted(result, key=lambda ps: (*map(len, ps), ps))
+
+    return result
+
+
 if __name__ == "__main__":
     sns.set_theme(context="notebook", palette="Set2")
     args = parse_args()
@@ -286,4 +445,5 @@ if __name__ == "__main__":
     # plot_seasonal_tree_breakdown_basin_comparison([b1, b2], model_results)
     # plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results)
     # plot_basin_comparison_map(args.basins[0])
-    plot_grouped_basin_map()
+    # plot_grouped_basin_map()
+    find_similar_basins()
