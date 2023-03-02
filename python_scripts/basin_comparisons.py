@@ -17,6 +17,12 @@ from single_tree_breakdown import get_groups_for_model
 from utils.config import config
 from utils.io import load_feather, load_huc2_basins, load_huc2_name_map
 
+BASIN_GROUPS = {
+    "Most Similar": [10, 11, 14, 16, 17, 18],
+    "Pretty Similar": [3, 5, 6, 7],
+    "Misfits": [1, 2, 9, 12, 13, 15],
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Compare basin results")
@@ -26,7 +32,7 @@ def parse_args():
         nargs="+",
         type=int,
         help="Which two basins should  be compared",
-        required=True,
+        required=False,
     )
     parser.add_argument(
         "-m",
@@ -71,7 +77,9 @@ def plot_basin_tree_breakdown_comparison(basins, results):
     plt.show()
 
 
-def plot_seasonal_tree_breakdown_basin_comparison(basins, results):
+def plot_seasonal_tree_breakdown_basin_comparison(
+    basins, results, plot_type="line"
+):
     huc2 = load_huc2_basins()
     # huc2_names = load_huc2_name_map()
     groups = get_groups_for_model(results)
@@ -96,51 +104,38 @@ def plot_seasonal_tree_breakdown_basin_comparison(basins, results):
     counts["basin"] = [huc2.loc[i, "name"] for i in counts["res_id"]]
     props = counts.groupby(["basin", "month", "group"])["prop"].mean()
     props *= 100
-    # from itertools import combinations
-
-    # basins = range(1, 19)
-    # basin_pairs = combinations(basins, 2)
-    # comp_data = {}
-    # for b1, b2 in basin_pairs:
-    #     if 4 in [b1, b2]:
-    #         continue
-    #     print(f"Making plot for basins: {b1}, {b2}")
-    # bprops = props.loc[idx[[huc2_names[b1], huc2_names[b2]], :, :]]
-    # bprops_pivot = (
-    #     bprops.reset_index()
-    #     .pivot(index=["group", "month"], columns="basin")
-    #     .fillna(0.0)
-    # )
-    # diff = bprops_pivot.diff(axis=1)[bprops_pivot.columns[1]].abs().mean()
-    # corr = bprops_pivot.corr().values[0, 1]
-    # from scipy.spatial.distance import cosine
-
-    # comp_data[(b1, b2)] = {
-    #     "diff": diff,
-    #     "corr": corr,
-    #     "cosine": cosine(
-    #         bprops_pivot[bprops_pivot.columns[0]],
-    #         bprops_pivot[bprops_pivot.columns[1]],
-    #     ),
-    # }
-    # continue
-
-    fg = sns.catplot(
-        data=props.reset_index(),
-        x="month",
-        y="prop",
-        # hue="basin",
-        col="group",
-        col_wrap=5,
-        kind="box",
-        legend_out=False,
-        height=5,
-        aspect=0.7,
-    )
+    if plot_type == "box":
+        fg = sns.catplot(
+            data=props.reset_index(),
+            x="month",
+            y="prop",
+            # hue="basin",
+            col="group",
+            col_wrap=5,
+            kind="box",
+            legend_out=False,
+            height=5,
+            aspect=0.7,
+        )
+    else:
+        fg = sns.relplot(
+            data=props.reset_index(),
+            x="month",
+            y="prop",
+            # hue="basin",
+            col="group",
+            col_wrap=5,
+            kind="line",
+            height=5,
+            aspect=0.7,
+        )
 
     fg.set_ylabels("Group Occ. [%]")
     fg.set_xlabels("Month")
     fg.set_titles("Tree Node: {col_name}")
+    for ax in fg.axes.flatten():
+        ax.set_xticks(range(1, 13))
+    fg.set_xticklabels(range(1, 13))
 
     plt.subplots_adjust(
         top=0.963,
@@ -154,7 +149,11 @@ def plot_seasonal_tree_breakdown_basin_comparison(basins, results):
         "~/Dropbox/plrt-conus-figures/basin_comparison"
     )
     basin_string = "-".join(map(str, basins))
-    output_file = f"monthly_basin_compare_{basin_string}_box.png"
+    if plot_type == "box":
+        output_file = f"monthly_basin_compare_{basin_string}_box.png"
+    else:
+        output_file = f"monthly_basin_compare_{basin_string}_line.png"
+
     plt.savefig("/".join([output_dir, output_file]))
     plt.show()
 
@@ -226,6 +225,49 @@ def plot_basin_comparison_map(basin):
     plt.show()
 
 
+def plot_grouped_basin_map():
+    basins = {}
+    with open(config.get_dir("spatial_data") / "huc2_names.csv", "r") as f:
+        for line in f.readlines():
+            line = line.strip("\n\r")
+            j, i = line.split(",")
+            basins[i] = int(j)
+
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    norm = Normalize(vmin=0, vmax=2)
+    cmap = get_cmap("plasma_r")
+    color_dict = {
+        tuple(item): cmap(norm(i))
+        for i, (k, item) in enumerate(BASIN_GROUPS.items())
+    }
+
+    color_vars = {}
+    for wbd_id in wbd_ids:
+        for gbasins, color in color_dict.items():
+            if int(wbd_id) in gbasins:
+                color_vars[int(wbd_id)] = color
+
+    other_bounds = [(wbd_map[i], "k", color_vars[i]) for i in color_vars.keys()]
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+    setup_map(coords=[west, south, east, north], other_bound=other_bounds)
+    # wbd_gdfs = [gpd.read_file(i+".shp") for i in wbds]
+    # for wbd_id, wbd_gdf in zip(wbd_ids, wbd_gdfs):
+    #     centroid = wbd_gdf.centroid[0]
+    #     x, y = centroid.x, centroid.y
+    #     print(x, y)
+    #     ax.text(x, y, wbd_id)
+    plt.show()
+
+
 if __name__ == "__main__":
     sns.set_theme(context="notebook", palette="Set2")
     args = parse_args()
@@ -242,5 +284,6 @@ if __name__ == "__main__":
     # basin_pairs = combinations(basins, 2)
     # for b1, b2 in basin_pairs:
     # plot_seasonal_tree_breakdown_basin_comparison([b1, b2], model_results)
-    plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results)
+    # plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results)
     # plot_basin_comparison_map(args.basins[0])
+    plot_grouped_basin_map()
