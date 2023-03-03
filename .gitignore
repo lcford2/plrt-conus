@@ -70,6 +70,7 @@ data/*
 
 # result files
 results/**/*.pickle
+aggregated_results/partition_scores.pickle
 
 # nohup files
 **/nohup.out
