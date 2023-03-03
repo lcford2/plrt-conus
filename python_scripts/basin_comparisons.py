@@ -356,13 +356,16 @@ def find_similar_basins():
 
     poss_partitions = sorted_k_partitions(basins, 3)
 
-    filtered = [i for i in poss_partitions if all([len(p) > 1 for p in i])]
+    # filtered = [i for i in poss_partitions if all([len(p) > 1 for p in i])]
+    similar_filtered = [
+        i for i in poss_partitions if filter_partitions_by_similar_size(i, 2)
+    ]
 
     nprocs = 48
-    nitems = len(filtered)
+    nitems = len(similar_filtered)
     chunk_size = nitems // (nprocs - 1)
     chunked_parts = [
-        filtered[i * chunk_size : (i + 1) * chunk_size] for i in range(nprocs)
+        similar_filtered[i * chunk_size : (i + 1) * chunk_size] for i in range(nprocs)
     ]
 
     results = Parallel(n_jobs=48, verbose=11)(
@@ -380,6 +383,10 @@ def find_similar_basins():
     mean = [tup for tup in enumerate(list(mean))]
     mean.sort(key=lambda x: x[1])
 
+    from IPython import embed as II
+
+    II()
+
 
 def filter_partitions_by_size(part):
     is_valid = True
@@ -391,6 +398,15 @@ def filter_partitions_by_size(part):
         return part
     else:
         return None
+
+
+def filter_partitions_by_similar_size(part, thresh):
+    for i, j in combinations(range(len(part)), 2):
+        i_size = len(part[i])
+        j_size = len(part[j])
+        if abs(i_size - j_size) > thresh:
+            return False
+    return True
 
 
 def get_part_scores(parts, score_dict):

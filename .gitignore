@@ -70,7 +70,6 @@ data/*
 
 # result files
 results/**/*.pickle
-aggregated_results/partition_scores.pickle
 
 # nohup files
 **/nohup.out
@@ -78,3 +77,7 @@ aggregated_results/partition_scores.pickle
 # direnv
 .envrc
 .envrc.cache
+
+# specific large files
+aggregated_results/partition_scores.pickle
+aggregated_results/best_partitions_3.pickle
