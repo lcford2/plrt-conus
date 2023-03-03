@@ -13,11 +13,7 @@ import seaborn as sns
 from joblib import Parallel, delayed
 from matplotlib.cm import ScalarMappable, get_cmap
 from matplotlib.colors import Normalize
-from parameter_sweep_analysis import (
-    get_contiguous_wbds,
-    load_model_results,
-    setup_map,
-)
+from parameter_sweep_analysis import get_contiguous_wbds, load_model_results, setup_map
 from single_tree_breakdown import get_groups_for_model
 from utils.config import config
 from utils.io import load_feather, load_huc2_basins, load_huc2_name_map
@@ -57,9 +53,7 @@ def plot_basin_tree_breakdown_comparison(basins, results):
     groups = get_groups_for_model(results)
     groups.name = "group"
     groups = groups.to_frame()
-    groups["basin"] = [
-        huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
-    ]
+    groups["basin"] = [huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)]
     groups = groups[groups["basin"].isin(basins)]
     counts = groups.groupby(["res_id", "basin"])["group"].value_counts()
     counts.name = "count"
@@ -85,17 +79,13 @@ def plot_basin_tree_breakdown_comparison(basins, results):
     plt.show()
 
 
-def plot_seasonal_tree_breakdown_basin_comparison(
-    basins, results, plot_type="line"
-):
+def plot_seasonal_tree_breakdown_basin_comparison(basins, results, plot_type="line"):
     huc2 = load_huc2_basins()
     # huc2_names = load_huc2_name_map()
     groups = get_groups_for_model(results)
     groups.name = "group"
     groups = groups.to_frame()
-    groups["basin"] = [
-        huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
-    ]
+    groups["basin"] = [huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)]
     groups = groups[groups["basin"].isin(basins)]
     groups["month"] = groups.index.get_level_values(1).month
     groups = groups.reset_index()
@@ -153,9 +143,7 @@ def plot_seasonal_tree_breakdown_basin_comparison(
         hspace=0.106,
         wspace=0.051,
     )
-    output_dir = os.path.expanduser(
-        "~/Dropbox/plrt-conus-figures/basin_comparison"
-    )
+    output_dir = os.path.expanduser("~/Dropbox/plrt-conus-figures/basin_comparison")
     basin_string = "-".join(map(str, basins))
     if plot_type == "box":
         output_file = f"monthly_basin_compare_{basin_string}_box.png"
@@ -213,9 +201,7 @@ def plot_basin_comparison_map(basin):
         -66.093750,
         53.382373,
     )
-    setup_map(
-        ax=ax, coords=[west, south, east, north], other_bound=other_bounds
-    )
+    setup_map(ax=ax, coords=[west, south, east, north], other_bound=other_bounds)
     plt.colorbar(
         ScalarMappable(norm=norm, cmap=cmap),
         cax=cbar_ax,
@@ -248,8 +234,7 @@ def plot_grouped_basin_map():
     norm = Normalize(vmin=0, vmax=2)
     cmap = get_cmap("plasma_r")
     color_dict = {
-        tuple(item): cmap(norm(i))
-        for i, (k, item) in enumerate(BASIN_GROUPS.items())
+        tuple(item): cmap(norm(i)) for i, (k, item) in enumerate(BASIN_GROUPS.items())
     }
 
     color_vars = {}
@@ -280,9 +265,7 @@ def find_similar_basins():
     comp_data = load_feather(
         config.get_dir("agg_results") / "basin_comp_metrics.feather",
     )
-    comp_data = comp_data.pivot(
-        index="level_0", columns="level_1", values="cosine"
-    )
+    comp_data = comp_data.pivot(index="level_0", columns="level_1", values="cosine")
     all_df = pd.DataFrame(index=range(1, 19), columns=range(1, 19))
 
     for i in range(1, 18):
@@ -355,9 +338,7 @@ def find_similar_basins():
             next_best_group = group
             break
 
-    remaining = [
-        i for i in basins if i not in [*best_group[0], *next_best_group[0]]
-    ]
+    remaining = [i for i in basins if i not in [*best_group[0], *next_best_group[0]]]
 
     for g in groups_by_size[len(remaining)]:
         if g[0] == remaining:
@@ -369,13 +350,16 @@ def find_similar_basins():
 
     poss_partitions = sorted_k_partitions(basins, 3)
 
-    filtered = [i for i in poss_partitions if all([len(p) > 1 for p in i])]
+    # filtered = [i for i in poss_partitions if all([len(p) > 1 for p in i])]
+    similar_filtered = [
+        i for i in poss_partitions if filter_partitions_by_similar_size(i, 2)
+    ]
 
     nprocs = 48
-    nitems = len(filtered)
+    nitems = len(similar_filtered)
     chunk_size = nitems // (nprocs - 1)
     chunked_parts = [
-        filtered[i * chunk_size : (i + 1) * chunk_size] for i in range(nprocs)
+        similar_filtered[i * chunk_size : (i + 1) * chunk_size] for i in range(nprocs)
     ]
 
     results = Parallel(n_jobs=48, verbose=11)(
@@ -393,6 +377,10 @@ def find_similar_basins():
     mean = [tup for tup in enumerate(list(mean))]
     mean.sort(key=lambda x: x[1])
 
+    from IPython import embed as II
+
+    II()
+
 
 def filter_partitions_by_size(part):
     is_valid = True
@@ -404,6 +392,15 @@ def filter_partitions_by_size(part):
         return part
     else:
         return None
+
+
+def filter_partitions_by_similar_size(part, thresh):
+    for i, j in combinations(range(len(part)), 2):
+        i_size = len(part[i])
+        j_size = len(part[j])
+        if abs(i_size - j_size) > thresh:
+            return False
+    return True
 
 
 def get_part_scores(parts, score_dict):
