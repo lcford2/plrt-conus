@@ -1,7 +1,9 @@
 import argparse
 import os
+import pickle
 import re
 from itertools import combinations
+from multiprocessing import cpu_count
 
 import matplotlib.gridspec as GS
 import matplotlib.patches as mpatch
@@ -12,14 +14,13 @@ import seaborn as sns
 from joblib import Parallel, delayed
 from matplotlib.cm import ScalarMappable, get_cmap
 from matplotlib.colors import Normalize
-from parameter_sweep_analysis import (
-    get_contiguous_wbds,
-    load_model_results,
-    setup_map,
-)
+from parameter_sweep_analysis import get_contiguous_wbds, load_model_results, setup_map
 from single_tree_breakdown import get_groups_for_model
 from utils.config import config
 from utils.io import load_feather, load_huc2_basins, load_huc2_name_map
+
+CPUS = cpu_count()
+os.environ["OMP_NUM_THREADS"] = str(CPUS)
 
 BASIN_GROUPS = {
     "Most Similar": [10, 11, 14, 16, 17, 18],
@@ -53,9 +54,7 @@ def plot_basin_tree_breakdown_comparison(basins, results):
     groups = get_groups_for_model(results)
     groups.name = "group"
     groups = groups.to_frame()
-    groups["basin"] = [
-        huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
-    ]
+    groups["basin"] = [huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)]
     groups = groups[groups["basin"].isin(basins)]
     counts = groups.groupby(["res_id", "basin"])["group"].value_counts()
     counts.name = "count"
@@ -81,17 +80,13 @@ def plot_basin_tree_breakdown_comparison(basins, results):
     plt.show()
 
 
-def plot_seasonal_tree_breakdown_basin_comparison(
-    basins, results, plot_type="line"
-):
+def plot_seasonal_tree_breakdown_basin_comparison(basins, results, plot_type="line"):
     huc2 = load_huc2_basins()
     # huc2_names = load_huc2_name_map()
     groups = get_groups_for_model(results)
     groups.name = "group"
     groups = groups.to_frame()
-    groups["basin"] = [
-        huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
-    ]
+    groups["basin"] = [huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)]
     groups = groups[groups["basin"].isin(basins)]
     groups["month"] = groups.index.get_level_values(1).month
     groups = groups.reset_index()
@@ -149,9 +144,7 @@ def plot_seasonal_tree_breakdown_basin_comparison(
         hspace=0.106,
         wspace=0.051,
     )
-    output_dir = os.path.expanduser(
-        "~/Dropbox/plrt-conus-figures/basin_comparison"
-    )
+    output_dir = os.path.expanduser("~/Dropbox/plrt-conus-figures/basin_comparison")
     basin_string = "-".join(map(str, basins))
     if plot_type == "box":
         output_file = f"monthly_basin_compare_{basin_string}_box.png"
@@ -209,9 +202,7 @@ def plot_basin_comparison_map(basin):
         -66.093750,
         53.382373,
     )
-    setup_map(
-        ax=ax, coords=[west, south, east, north], other_bound=other_bounds
-    )
+    setup_map(ax=ax, coords=[west, south, east, north], other_bound=other_bounds)
     plt.colorbar(
         ScalarMappable(norm=norm, cmap=cmap),
         cax=cbar_ax,
@@ -245,8 +236,7 @@ def plot_grouped_basin_map():
     # cmap = get_cmap("plasma_r")
     color_pal = sns.color_palette("Set2")
     color_dict = {
-        tuple(item): color_pal[i]
-        for i, (k, item) in enumerate(BASIN_GROUPS.items())
+        tuple(item): color_pal[i] for i, (k, item) in enumerate(BASIN_GROUPS.items())
     }
 
     color_vars = {}
@@ -270,9 +260,7 @@ def plot_grouped_basin_map():
     #     x, y = centroid.x, centroid.y
     #     print(x, y)
     #     ax.text(x, y, wbd_id)
-    handles = [
-        mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)
-    ]
+    handles = [mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)]
     labels = BASIN_GROUPS.keys()
     ax = plt.gca()
     ax.legend(handles, labels, loc="best")
@@ -283,9 +271,7 @@ def find_similar_basins():
     comp_data = load_feather(
         config.get_dir("agg_results") / "basin_comp_metrics.feather",
     )
-    comp_data = comp_data.pivot(
-        index="level_0", columns="level_1", values="cosine"
-    )
+    comp_data = comp_data.pivot(index="level_0", columns="level_1", values="cosine")
     all_df = pd.DataFrame(index=range(1, 19), columns=range(1, 19))
 
     for i in range(1, 18):
@@ -339,12 +325,15 @@ def find_similar_basins():
     ranked_scores = sorted(scores, key=lambda x: x[1])
     ranked_groups = [(potential_groups[i], j) for i, j in ranked_scores]
 
+    score_dict = {tuple(g): s for g, s in ranked_groups}
+
     groups_by_size = {}
     for i in range(2, 16):
         sub_groups = [g for g in ranked_groups if len(g[0]) == i]
         groups_by_size[i] = sub_groups
 
     best_group = groups_by_size[6][0]
+    next_best_group, worst_group = "", ""
     for group in groups_by_size[6]:
         is_next_best = True
         for b in group[0]:
@@ -355,9 +344,7 @@ def find_similar_basins():
             next_best_group = group
             break
 
-    remaining = [
-        i for i in basins if i not in [*best_group[0], *next_best_group[0]]
-    ]
+    remaining = [i for i in basins if i not in [*best_group[0], *next_best_group[0]]]
 
     for g in groups_by_size[len(remaining)]:
         if g[0] == remaining:
@@ -368,29 +355,54 @@ def find_similar_basins():
     # third_group = len(basins) - 2 * two_group_size
 
     poss_partitions = sorted_k_partitions(basins, 3)
-    filtered = []
-    for part in poss_partitions:
-        is_valid = True
-        for p in part:
-            if len(p) < 2:
-                is_valid = False
-                break
-        if is_valid:
-            filtered.append(part)
-    results = Parallel(n_jobs=-1, verbose=11)(
-        delayed(get_part_scores)(part, groups_by_size) for part in filtered
+
+    filtered = [i for i in poss_partitions if all([len(p) > 1 for p in i])]
+
+    nprocs = 48
+    nitems = len(filtered)
+    chunk_size = nitems // (nprocs - 1)
+    chunked_parts = [
+        filtered[i * chunk_size : (i + 1) * chunk_size] for i in range(nprocs)
+    ]
+
+    results = Parallel(n_jobs=48, verbose=11)(
+        delayed(get_part_scores)(parts, score_dict) for parts in chunked_parts
     )
-    print(results)
-    from IPython import embed as II
+    with open("../aggregated_results/partition_scores.pickle", "wb") as f:
+        pickle.dump(results, f)
 
-    II()
+    scores = []
+    for i in results:
+        scores.extend(i)
+
+    scores = np.array(scores)
+    mean = scores.mean(axis=1)
+    mean = [tup for tup in enumerate(list(mean))]
+    mean.sort(key=lambda x: x[1])
 
 
-def get_part_scores(part, groups_by_size):
-    pscores = []
+def filter_partitions_by_size(part):
+    is_valid = True
     for p in part:
-        for g, s in groups_by_size[len(p)]:
-            pscores.append(s)
+        if len(p) < 2:
+            is_valid = False
+            break
+    if is_valid:
+        return part
+    else:
+        return None
+
+
+def get_part_scores(parts, score_dict):
+    pscores = []
+    for i, part in enumerate(parts):
+        pscores.append([score_dict[tuple(p)] for p in part])
+        # if i % 1000 == 0:
+        #     print(f"Iteration {i}")
+        # for g, s in groups_by_size[len(p)]:
+        #     if tuple(p) == tuple(g):
+        #         pscores.append(s)
+    # return pscores
     return pscores
 
 
