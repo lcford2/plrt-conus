@@ -4,6 +4,7 @@ import re
 from itertools import combinations
 
 import matplotlib.gridspec as GS
+import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -22,8 +23,8 @@ from utils.io import load_feather, load_huc2_basins, load_huc2_name_map
 
 BASIN_GROUPS = {
     "Most Similar": [10, 11, 14, 16, 17, 18],
-    "Pretty Similar": [3, 5, 6, 7],
-    "Misfits": [1, 2, 9, 12, 13, 15],
+    "Sort-of Similar": [3, 5, 6, 7, 8],
+    "Least Similar": [1, 2, 9, 12, 13, 15],
 }
 
 
@@ -240,10 +241,11 @@ def plot_grouped_basin_map():
     wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
     wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
 
-    norm = Normalize(vmin=0, vmax=2)
-    cmap = get_cmap("plasma_r")
+    # norm = Normalize(vmin=0, vmax=2)
+    # cmap = get_cmap("plasma_r")
+    color_pal = sns.color_palette("Set2")
     color_dict = {
-        tuple(item): cmap(norm(i))
+        tuple(item): color_pal[i]
         for i, (k, item) in enumerate(BASIN_GROUPS.items())
     }
 
@@ -268,6 +270,12 @@ def plot_grouped_basin_map():
     #     x, y = centroid.x, centroid.y
     #     print(x, y)
     #     ax.text(x, y, wbd_id)
+    handles = [
+        mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)
+    ]
+    labels = BASIN_GROUPS.keys()
+    ax = plt.gca()
+    ax.legend(handles, labels, loc="best")
     plt.show()
 
 
@@ -369,7 +377,6 @@ def find_similar_basins():
                 break
         if is_valid:
             filtered.append(part)
-
     results = Parallel(n_jobs=-1, verbose=11)(
         delayed(get_part_scores)(part, groups_by_size) for part in filtered
     )
