@@ -1,6 +1,5 @@
 import argparse
 import os
-import pickle
 import re
 from itertools import combinations
 from multiprocessing import cpu_count
@@ -17,7 +16,14 @@ from matplotlib.colors import Normalize
 from parameter_sweep_analysis import get_contiguous_wbds, load_model_results, setup_map
 from single_tree_breakdown import get_groups_for_model
 from utils.config import config
-from utils.io import load_feather, load_huc2_basins, load_huc2_name_map
+from utils.io import (
+    load_feather,
+    load_huc2_basins,
+    load_huc2_name_map,
+    load_pickle,
+    write_pickle,
+)
+from utils.utils import sorted_k_partitions
 
 CPUS = cpu_count()
 os.environ["OMP_NUM_THREADS"] = str(CPUS)
@@ -234,9 +240,17 @@ def plot_grouped_basin_map():
 
     # norm = Normalize(vmin=0, vmax=2)
     # cmap = get_cmap("plasma_r")
+    parts = load_pickle(config.get_dir("agg_results") / "best_partitions_3.pickle")
+    thresh = 3
+    filtered_parts = [i for i in parts if i[-1] == thresh]
+
+    best_part = filtered_parts[0][0]
+
     color_pal = sns.color_palette("Set2")
     color_dict = {
-        tuple(item): color_pal[i] for i, (k, item) in enumerate(BASIN_GROUPS.items())
+        tuple(item): color_pal[i]
+        # for i, (k, item) in enumerate(BASIN_GROUPS.items())
+        for i, item in enumerate(best_part)
     }
 
     color_vars = {}
@@ -261,7 +275,7 @@ def plot_grouped_basin_map():
     #     print(x, y)
     #     ax.text(x, y, wbd_id)
     handles = [mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)]
-    labels = BASIN_GROUPS.keys()
+    labels = [str(i) for i in best_part]
     ax = plt.gca()
     ax.legend(handles, labels, loc="best")
     plt.show()
@@ -358,10 +372,10 @@ def find_similar_basins():
 
     # filtered = [i for i in poss_partitions if all([len(p) > 1 for p in i])]
     similar_filtered = [
-        i for i in poss_partitions if filter_partitions_by_similar_size(i, 2)
+        i for i in poss_partitions if filter_partitions_by_similar_size(i, 3)
     ]
 
-    nprocs = 48
+    nprocs = CPUS
     nitems = len(similar_filtered)
     chunk_size = nitems // (nprocs - 1)
     chunked_parts = [
@@ -371,8 +385,6 @@ def find_similar_basins():
     results = Parallel(n_jobs=48, verbose=11)(
         delayed(get_part_scores)(parts, score_dict) for parts in chunked_parts
     )
-    with open("../aggregated_results/partition_scores.pickle", "wb") as f:
-        pickle.dump(results, f)
 
     scores = []
     for i in results:
@@ -383,6 +395,11 @@ def find_similar_basins():
     mean = [tup for tup in enumerate(list(mean))]
     mean.sort(key=lambda x: x[1])
 
+    output = [
+        (similar_filtered[i], j, find_partitions_size_diff(similar_filtered[i]))
+        for i, j in mean
+    ]
+    write_pickle(output, config.get_dir("agg_results") / "best_partitions_3.pickle")
     from IPython import embed as II
 
     II()
@@ -398,6 +415,15 @@ def filter_partitions_by_size(part):
         return part
     else:
         return None
+
+
+def find_partitions_size_diff(part):
+    max_diff = 0
+    for i, j in combinations(range(len(part)), 2):
+        diff = abs(len(part[i]) - len(part[j]))
+        if diff > max_diff:
+            max_diff = diff
+    return max_diff
 
 
 def filter_partitions_by_similar_size(part, thresh):
@@ -422,46 +448,6 @@ def get_part_scores(parts, score_dict):
     return pscores
 
 
-def sorted_k_partitions(seq, k):
-    """Returns a list of all unique k-partitions of `seq`.
-
-    Each partition is a list of parts, and each part is a tuple.
-
-    The parts in each individual partition will be sorted in shortlex
-    order (i.e., by length first, then lexicographically).
-
-    The overall list of partitions will then be sorted by the length
-    of their first part, the length of their second part, ...,
-    the length of their last part, and then lexicographically.
-    """
-    n = len(seq)
-    groups = []  # a list of lists, currently empty
-
-    def generate_partitions(i):
-        if i >= n:
-            yield list(map(tuple, groups))
-        else:
-            if n - i > k - len(groups):
-                for group in groups:
-                    group.append(seq[i])
-                    yield from generate_partitions(i + 1)
-                    group.pop()
-
-            if len(groups) < k:
-                groups.append([seq[i]])
-                yield from generate_partitions(i + 1)
-                groups.pop()
-
-    result = generate_partitions(0)
-
-    # Sort the parts in each partition in shortlex order
-    result = [sorted(ps, key=lambda p: (len(p), p)) for ps in result]
-    # Sort partitions by the length of each part, then lexicographically.
-    result = sorted(result, key=lambda ps: (*map(len, ps), ps))
-
-    return result
-
-
 if __name__ == "__main__":
     sns.set_theme(context="notebook", palette="Set2")
     args = parse_args()
@@ -480,5 +466,5 @@ if __name__ == "__main__":
     # plot_seasonal_tree_breakdown_basin_comparison([b1, b2], model_results)
     # plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results)
     # plot_basin_comparison_map(args.basins[0])
-    # plot_grouped_basin_map()
-    find_similar_basins()
+    plot_grouped_basin_map()
+    # find_similar_basins()
