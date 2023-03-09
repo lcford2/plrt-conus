@@ -28,10 +28,16 @@ from utils.utils import sorted_k_partitions
 CPUS = cpu_count()
 os.environ["OMP_NUM_THREADS"] = str(CPUS)
 
-BASIN_GROUPS = {
+BASIN_GROUPS_ORIG = {
     "Most Similar": [10, 11, 14, 16, 17, 18],
     "Sort-of Similar": [3, 5, 6, 7, 8],
     "Least Similar": [1, 2, 9, 12, 13, 15],
+}
+
+BASIN_GROUPS = {
+    "Most Similar": [10, 14, 16, 17, 18],
+    "Sort-of Similar": [3, 5, 6, 7, 11],
+    "Least Similar": [1, 2, 8, 9, 12, 13, 15],
 }
 
 
@@ -400,6 +406,12 @@ def find_similar_basins():
         for i, j in mean
     ]
     write_pickle(output, config.get_dir("agg_results") / "best_partitions_3.pickle")
+
+    # groups_by_size = defaultdict(list)
+    # for i, j in mean:
+    #     groups = similar_filtered[i]
+    #     min_size = min(len(k) for k in groups)
+    #     groups_by_size[min_size].append((groups, j))
     from IPython import embed as II
 
     II()
