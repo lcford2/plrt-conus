@@ -4,6 +4,7 @@ import pickle
 import re
 from itertools import combinations
 from multiprocessing import cpu_count
+from collections import defaultdict
 
 import matplotlib.gridspec as GS
 import matplotlib.patches as mpatch
@@ -22,10 +23,16 @@ from utils.io import load_feather, load_huc2_basins, load_huc2_name_map
 CPUS = cpu_count()
 os.environ["OMP_NUM_THREADS"] = str(CPUS)
 
-BASIN_GROUPS = {
+BASIN_GROUPS_ORIG = {
     "Most Similar": [10, 11, 14, 16, 17, 18],
     "Sort-of Similar": [3, 5, 6, 7, 8],
     "Least Similar": [1, 2, 9, 12, 13, 15],
+}
+
+BASIN_GROUPS = {
+    "Most Similar": [10, 14, 16, 17, 18],
+    "Sort-of Similar": [3, 5, 6, 7, 11],
+    "Least Similar": [1, 2, 8, 9, 12, 13, 15],
 }
 
 
@@ -382,9 +389,13 @@ def find_similar_basins():
     mean = scores.mean(axis=1)
     mean = [tup for tup in enumerate(list(mean))]
     mean.sort(key=lambda x: x[1])
-
+    
+    groups_by_size = defaultdict(list)
+    for i, j in mean:
+        groups = similar_filtered[i]
+        min_size = min(len(k) for k in groups)
+        groups_by_size[min_size].append((groups, j))
     from IPython import embed as II
-
     II()
 
 
@@ -480,5 +491,5 @@ if __name__ == "__main__":
     # plot_seasonal_tree_breakdown_basin_comparison([b1, b2], model_results)
     # plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results)
     # plot_basin_comparison_map(args.basins[0])
-    # plot_grouped_basin_map()
-    find_similar_basins()
+    plot_grouped_basin_map()
+    # find_similar_basins()
