@@ -1,27 +1,25 @@
 import argparse
 import os
 import re
+from collections import defaultdict
 from itertools import combinations
 from multiprocessing import cpu_count
 
-import matplotlib.gridspec as GS
+import matplotlib.gridspec as mgridspec
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+from fit_plrt_model import load_resopsus_data
 from joblib import Parallel, delayed
 from matplotlib.cm import ScalarMappable, get_cmap
 from matplotlib.colors import Normalize
 from parameter_sweep_analysis import get_contiguous_wbds, load_model_results, setup_map
+from scipy.spatial.distance import cosine as cosine_dist
 from single_tree_breakdown import get_groups_for_model
 from utils.config import config
-from utils.io import (  # load_pickle,
-    load_feather,
-    load_huc2_basins,
-    load_huc2_name_map,
-    write_pickle,
-)
+from utils.io import load_feather, load_huc2_basins, load_huc2_name_map, write_pickle
 from utils.utils import sorted_k_partitions
 
 CPUS = cpu_count()
@@ -188,7 +186,7 @@ def plot_basin_comparison_map(basin):
 
     # fig, ax = plt.subplots(1, 1)
     fig = plt.figure()
-    gs = GS.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
+    gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
     ax = fig.add_subplot(gs[0, 0])
     cbar_ax = fig.add_subplot(gs[0, 1])
     wbds = get_contiguous_wbds()
@@ -460,16 +458,127 @@ def get_part_scores(parts, score_dict):
     return pscores
 
 
+def find_similar_reservoir_characteristics(model_results):
+    groups = model_results["groups"]
+    counts = groups.groupby(
+        [
+            groups.index.get_level_values(0),
+            groups.index.get_level_values(1).month,
+        ]
+    ).value_counts()
+
+    seasonal_percentages = {}
+    same_groups = defaultdict(list)
+    idx = pd.IndexSlice
+    for res in counts.index.get_level_values(0).unique():
+        rdf = counts.loc[idx[res, :, :]].unstack()
+        rdf = rdf.fillna(0.0)
+        rdf = rdf.divide(rdf.sum(axis=1), axis=0)
+        seasonal_percentages[res] = rdf
+        same_groups[tuple(sorted(rdf.columns))].append(res)
+
+    all_group_res = same_groups[(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)]
+    distances = []
+    completed_pairs = []
+    for res1 in all_group_res:
+        rdf1 = seasonal_percentages[res1]
+        for res2 in all_group_res:
+            if res2 == res1:
+                continue
+            # if (res2, res1) in completed_pairs:
+            #     continue
+            rdf2 = seasonal_percentages[res2]
+            total_distance = 0
+            for column in rdf2.columns:
+                total_distance += np.abs(cosine_dist(rdf1[column], rdf2[column]))
+            distances.append((res1, res2, total_distance))
+            completed_pairs.append((res1, res2))
+
+    distances = pd.DataFrame.from_records(distances, columns=["res1", "res2", "dist"])
+    distances[
+        [
+            "res1_rt",
+            "res2_rt",
+            "res1_max_sto",
+            "res2_max_sto",
+            "res1_rel_inf_corr",
+            "res2_rel_inf_corr",
+        ]
+    ] = 0.0
+    res_data, res_meta = load_resopsus_data()
+
+    for i, row in distances.iterrows():
+        res1, res2 = row.res1, row.res2
+        res1_meta = res_meta.loc[res1]
+        res2_meta = res_meta.loc[res2]
+        row.res1_rt = res1_meta.rts
+        row.res1_max_sto = res1_meta.max_sto
+        row.res1_rel_inf_corr = res1_meta.rel_inf_corr
+        row.res2_rt = res2_meta.rts
+        row.res2_max_sto = res2_meta.max_sto
+        row.res2_rel_inf_corr = res2_meta.rel_inf_corr
+        distances.loc[i] = row
+
+    distances["rt_diff"] = (distances["res1_rt"] - distances["res2_rt"]).abs()
+    distances["max_sto_diff"] = (
+        distances["res1_max_sto"] - distances["res2_max_sto"]
+    ).abs()
+    distances["rel_inf_corr_diff"] = (
+        distances["res1_rel_inf_corr"] - distances["res2_rel_inf_corr"]
+    ).abs()
+
+    diff_columns = ["rt_diff", "max_sto_diff", "rel_inf_corr_diff"]
+
+    closest_reservoirs = {}
+    closest_records = []
+    for res in all_group_res:
+        rdf = distances[distances["res1"] == res]
+        rdf = rdf.sort_values(by="dist")
+        key = rdf.head(10)["dist"].mean()
+        closest_reservoirs[(res, key)] = rdf.head(10)
+        closest_records.extend(rdf.head(10).values)
+
+    closest_diffs = []
+    for res, rdf in closest_reservoirs.items():
+        closest_diffs.append(
+            [
+                *res,
+                *rdf[diff_columns].mean().values,
+            ]
+        )
+    closest_diffs = pd.DataFrame.from_records(
+        closest_diffs,
+        columns=["res", "mean_dist", *diff_columns],
+    )
+    closest_df = pd.DataFrame.from_records(closest_records, columns=distances.columns)
+    fig, axes = plt.subplots(1, 3, sharey=True)
+    axes = axes.flatten()
+    xlabels = [f"Absolute Difference {i}" for i in ["RT", "St. Cap.", "r(R, I)"]]
+    for column, ax, xlabel in zip(diff_columns, axes, xlabels):
+        # y = closest_diffs["mean_dist"]
+        # x = closest_diffs[column]
+        y = closest_df["dist"]
+        x = closest_df[column]
+        ax.scatter(x, y)
+        if ax == axes[0]:
+            ax.set_ylabel("Cosine Distance")
+        ax.set_xlabel(xlabel)
+
+    plt.show()
+
+
 if __name__ == "__main__":
-    sns.set_theme(context="notebook", palette="Set2")
+    sns.set_theme(context="notebook", palette="Set2", font_scale=1.2)
     args = parse_args()
 
     if args.model_path:
-        model_results = load_model_results(
-            config.get_dir("results")
-            / "monthly_merged_data_set_minyr3"
-            / args.model_path
-        )
+        model_path = args.model_path
+    else:
+        model_path = "TD4_MSS0.09"
+
+    model_results = load_model_results(
+        config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path
+    )
     # plot_basin_tree_breakdown_comparison(args.basins, model_results)
     # from itertools import combinations
     # basins = range(1, 19)
@@ -480,3 +589,5 @@ if __name__ == "__main__":
     # plot_basin_comparison_map(args.basins[0])
     # plot_grouped_basin_map()
     # find_similar_basins()
+
+    # find_similar_reservoir_characteristics(model_results)
