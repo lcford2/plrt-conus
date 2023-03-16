@@ -16,11 +16,10 @@ from matplotlib.colors import Normalize
 from parameter_sweep_analysis import get_contiguous_wbds, load_model_results, setup_map
 from single_tree_breakdown import get_groups_for_model
 from utils.config import config
-from utils.io import (
+from utils.io import (  # load_pickle,
     load_feather,
     load_huc2_basins,
     load_huc2_name_map,
-    load_pickle,
     write_pickle,
 )
 from utils.utils import sorted_k_partitions
@@ -246,17 +245,17 @@ def plot_grouped_basin_map():
 
     # norm = Normalize(vmin=0, vmax=2)
     # cmap = get_cmap("plasma_r")
-    parts = load_pickle(config.get_dir("agg_results") / "best_partitions_3.pickle")
-    thresh = 3
-    filtered_parts = [i for i in parts if i[-1] == thresh]
+    # parts = load_pickle(config.get_dir("agg_results") / "best_partitions_3.pickle")
+    # thresh = 3
+    # filtered_parts = [i for i in parts if i[-1] == thresh]
 
-    best_part = filtered_parts[0][0]
+    # best_part = filtered_parts[0][0]
 
     color_pal = sns.color_palette("Set2")
     color_dict = {
         tuple(item): color_pal[i]
-        # for i, (k, item) in enumerate(BASIN_GROUPS.items())
-        for i, item in enumerate(best_part)
+        for i, (k, item) in enumerate(BASIN_GROUPS.items())
+        # for i, item in enumerate(best_part)
     }
 
     color_vars = {}
@@ -281,7 +280,8 @@ def plot_grouped_basin_map():
     #     print(x, y)
     #     ax.text(x, y, wbd_id)
     handles = [mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)]
-    labels = [str(i) for i in best_part]
+    # labels = [str(i) for i in best_part]
+    labels = BASIN_GROUPS.keys()
     ax = plt.gca()
     ax.legend(handles, labels, loc="best")
     plt.show()
@@ -476,7 +476,7 @@ if __name__ == "__main__":
     # basin_pairs = combinations(basins, 2)
     # for b1, b2 in basin_pairs:
     # plot_seasonal_tree_breakdown_basin_comparison([b1, b2], model_results)
-    # plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results)
+    plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results, "box")
     # plot_basin_comparison_map(args.basins[0])
-    plot_grouped_basin_map()
+    # plot_grouped_basin_map()
     # find_similar_basins()
