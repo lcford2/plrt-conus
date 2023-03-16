@@ -23,9 +23,7 @@ def load_grand_db() -> gpd.GeoDataFrame:
     Returns:
         gpd.GeoDataFrame: GeoDataFrame of GRanD DB
     """
-    df = gpd.read_file(
-        (config.get_dir("spatial_data") / "my_grand_info").as_posix()
-    )
+    df = gpd.read_file((config.get_dir("spatial_data") / "my_grand_info").as_posix())
     return df.set_index("GRAND_ID")
 
 
@@ -116,9 +114,7 @@ def calculate_metrics(
 
     file_name = "_".join(file_name_list)
     metrics_file = (
-        config.get_dir("agg_results")
-        / "parameter_sweep"
-        / f"{file_name}.pickle"
+        config.get_dir("agg_results") / "parameter_sweep" / f"{file_name}.pickle"
     )
     if not recalc and metrics_file.exists():
         return load_pickle(metrics_file.as_posix())
@@ -217,23 +213,15 @@ def make_parameter_sweep_comparison(metric_dict: dict, metric: str) -> None:
     )
     cmp_rank["std"] = cmp_metrics["std"].rank(method="min")
 
-    weights = pd.Series(
-        {"mean": 1.5, "median": 1.5, "min": 2, "std": 1, "max": 1}
-    )
+    weights = pd.Series({"mean": 1.5, "median": 1.5, "min": 2, "std": 1, "max": 1})
     cmp_wrank = cmp_rank * weights
 
     cmp_rank["score"] = cmp_rank.sum(axis=1)
     cmp_rank = cmp_rank.sort_values(by="score", ascending=False)
     cmp_wrank["score"] = cmp_wrank.sum(axis=1)
     cmp_wrank = cmp_wrank.sort_values(by="score", ascending=False)
-    print(
-        cmp_metrics.loc[cmp_rank.tail(10).index, :].to_markdown(floatfmt="0.3f")
-    )
-    print(
-        cmp_metrics.loc[cmp_wrank.tail(10).index, :].to_markdown(
-            floatfmt="0.3f"
-        )
-    )
+    print(cmp_metrics.loc[cmp_rank.tail(10).index, :].to_markdown(floatfmt="0.3f"))
+    print(cmp_metrics.loc[cmp_wrank.tail(10).index, :].to_markdown(floatfmt="0.3f"))
 
 
 def plot_single_model_metrics(df: pd.DataFrame) -> None:
@@ -337,7 +325,9 @@ def compare_training_testing_data(results: dict, min_years: int) -> None:
     plt.show()
 
 
-def setup_map(ax=None, coords=None, other_bound=None) -> Basemap:
+def setup_map(
+    ax=None, coords=None, other_bound=None, label_positions=None, return_ticks=False
+) -> Basemap:
     """Generate a map with many common elements
 
     Args:
@@ -387,17 +377,20 @@ def setup_map(ax=None, coords=None, other_bound=None) -> Basemap:
 
     parallels = np.arange(0.0, 81, 10.0)
     meridians = np.arange(10.0, 351.0, 20.0)
+    if not label_positions:
+        label_positions = [1, 1, 1, 1]
+
     pvals = m.drawparallels(
         parallels,
         linewidth=1.0,
         dashes=[1, 0],
-        labels=[1, 1, 1, 1],
+        labels=label_positions,
         zorder=-1,
     )
     mvals = m.drawmeridians(
-        meridians, linewidth=1.0, dashes=[1, 0], labels=[1, 1, 1, 1], zorder=-1
+        meridians, linewidth=1.0, dashes=[1, 0], labels=label_positions, zorder=-1
     )
-    xticks = [i[1][0].get_position()[0] for i in mvals.values()]
+    xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
     yticks = []
     for i in pvals.values():
         try:
@@ -439,7 +432,11 @@ def setup_map(ax=None, coords=None, other_bound=None) -> Basemap:
             bound[4].set_facecolor(fc)
             bound[4].set_alpha(1)
             bound[4].set_zorder(2)
-    return m
+
+    if return_ticks:
+        return m, mvals, pvals
+    else:
+        return m
 
 
 def get_contiguous_wbds():
@@ -471,9 +468,7 @@ def setup_wbd_map():
         -66.093750,
         53.382373,
     )
-    m = setup_map(
-        ax=ax, coords=[west, south, east, north], other_bound=other_bounds
-    )
+    m = setup_map(ax=ax, coords=[west, south, east, north], other_bound=other_bounds)
     return fig, ax, m
 
 
@@ -500,9 +495,7 @@ def plot_training_testing_map(results: dict, min_years: int) -> None:
     merged_data, merged_meta = load_resopsus_data(min_years)
     all_res = list(set([*all_res, *merged_meta.index]))
 
-    left_out_res = [
-        i for i in all_res if i not in test_res and i not in train_res
-    ]
+    left_out_res = [i for i in all_res if i not in test_res and i not in train_res]
 
     test_coords = [
         (row.LONG_DD, row.LAT_DD)
@@ -514,9 +507,7 @@ def plot_training_testing_map(results: dict, min_years: int) -> None:
     ]
     left_out_coords = [
         (row.LONG_DD, row.LAT_DD)
-        for i, row in big_grand[
-            big_grand["GRAND_ID"].isin(left_out_res)
-        ].iterrows()
+        for i, row in big_grand[big_grand["GRAND_ID"].isin(left_out_res)].iterrows()
     ]
 
     train_x, train_y = list(zip(*train_coords))
@@ -526,12 +517,8 @@ def plot_training_testing_map(results: dict, min_years: int) -> None:
     print("Test #:", len(test_x))
     print("Left Out #:", len(left_out_x))
 
-    m.scatter(
-        train_x, train_y, latlon=True, label="Training", marker="v", zorder=4
-    )
-    m.scatter(
-        test_x, test_y, latlon=True, label="Testing", marker="v", zorder=4
-    )
+    m.scatter(train_x, train_y, latlon=True, label="Training", marker="v", zorder=4)
+    m.scatter(test_x, test_y, latlon=True, label="Testing", marker="v", zorder=4)
     # m.scatter(
     #     left_out_x,
     #     left_out_y,
@@ -566,12 +553,8 @@ def plot_data_diff_map(year1: int, year2: int) -> None:
 
     grand = grand.set_index("GRAND_ID")
 
-    yr1_coords = grand.loc[
-        yr1_meta.index, ["LONG_DD", "LAT_DD"]
-    ].values.tolist()
-    yr2_coords = grand.loc[
-        yr2_meta.index, ["LONG_DD", "LAT_DD"]
-    ].values.tolist()
+    yr1_coords = grand.loc[yr1_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
+    yr2_coords = grand.loc[yr2_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
 
     yr1_x, yr1_y = list(zip(*yr1_coords))
     yr2_x, yr2_y = list(zip(*yr2_coords))
@@ -736,9 +719,7 @@ def translate_tree_splitting_values(model_dir):
             feat_name = feats[feat]
             # if feat_name in calc_feats:
             q = (x[:, feat] < value).mean()
-            print(
-                f"{nid:02}", feat_name.center(20), f"{value:+8.3f}", f"{q:.0%}"
-            )
+            print(f"{nid:02}", feat_name.center(20), f"{value:+8.3f}", f"{q:.0%}")
 
 
 def correlate_res_metrics(metrics: dict, metric: str):

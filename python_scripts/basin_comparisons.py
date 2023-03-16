@@ -1,10 +1,12 @@
 import argparse
+import calendar
 import os
 import re
 from collections import defaultdict
 from itertools import combinations
 from multiprocessing import cpu_count
 
+import geopandas as gpd
 import matplotlib.gridspec as mgridspec
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
@@ -14,7 +16,7 @@ import seaborn as sns
 from fit_plrt_model import load_resopsus_data
 from joblib import Parallel, delayed
 from matplotlib.cm import ScalarMappable, get_cmap
-from matplotlib.colors import Normalize
+from matplotlib.colors import ListedColormap, Normalize
 from parameter_sweep_analysis import get_contiguous_wbds, load_model_results, setup_map
 from scipy.spatial.distance import cosine as cosine_dist
 from single_tree_breakdown import get_groups_for_model
@@ -567,6 +569,257 @@ def find_similar_reservoir_characteristics(model_results):
     plt.show()
 
 
+def plot_reservoir_group_access_map():
+    basins = {}
+    with open(config.get_dir("spatial_data") / "huc2_names.csv", "r") as f:
+        for line in f.readlines():
+            line = line.strip("\n\r")
+            j, i = line.split(",")
+            basins[i] = int(j)
+
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    res_access = pd.read_csv(
+        "../aggregated_results/res_group_access.csv", index_col=0, dtype=str
+    )
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+
+    groups = res_access.columns
+    color_pal = sns.color_palette("Set2")
+    group_colors = {group: color_pal[i] for i, group in enumerate(groups)}
+
+    color_dict = {
+        tuple(item): color_pal[i] for i, (k, item) in enumerate(BASIN_GROUPS.items())
+    }
+
+    color_vars = {}
+    for wbd_id in wbd_ids:
+        for gbasins, color in color_dict.items():
+            if int(wbd_id) in gbasins:
+                color_vars[int(wbd_id)] = color
+
+    other_bounds = [(wbd_map[i], "k", "w") for i in color_vars.keys()]
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+    m = setup_map(coords=[west, south, east, north], other_bound=other_bounds)
+
+    for group in groups:
+        resers = res_access[group].dropna().values
+        res_coords = [
+            (row.LONG_DD, row.LAT_DD)
+            for i, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
+        ]
+        res_x, res_y = list(zip(*res_coords))
+        m.scatter(
+            res_x,
+            res_y,
+            latlon=True,
+            marker="v",
+            color=group_colors[group],
+            label=group,
+            zorder=4,
+            sizes=[40],
+        )
+    ax = plt.gca()
+    ax.legend(loc="lower left")
+    plt.show()
+
+
+def plot_reservoir_most_likely_group_maps(model_results):
+    basins = {}
+    with open(config.get_dir("spatial_data") / "huc2_names.csv", "r") as f:
+        for line in f.readlines():
+            line = line.strip("\n\r")
+            j, i = line.split(",")
+            basins[i] = int(j)
+
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+
+    groups = model_results["groups"]
+    counts = groups.groupby(
+        [
+            groups.index.get_level_values(0),
+            groups.index.get_level_values(1).month,
+        ]
+    ).value_counts()
+
+    most_likely_groups = []
+    idx = pd.IndexSlice
+    for res in counts.index.get_level_values(0).unique():
+        rdf = counts.loc[idx[res, :, :]].unstack()
+        rdf = rdf.fillna(0.0)
+        rdf = rdf.divide(rdf.sum(axis=1), axis=0)
+        most_likely_groups.append([res, *rdf.idxmax(axis=1).values])
+
+    most_likely_groups = pd.DataFrame.from_records(
+        most_likely_groups, columns=["res", *range(1, 13)]
+    )
+    # norm = Normalize(vmin=0, vmax=11)
+    # cmap = get_cmap("Paired")
+    color_pal = sns.color_palette("Paired")
+    norm = Normalize(vmin=1, vmax=10)
+    cmap = ListedColormap(color_pal.as_hex()[:10])
+    # group_colors = {i + 1: cmap(norm(i)) for i in range(10)}
+    # group_colors = {i + 1: color_pal[i] for i in range(10)}
+    resers = most_likely_groups["res"].values
+    res_coords = [
+        (row.LONG_DD, row.LAT_DD)
+        for i, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
+    ]
+    res_x, res_y = list(zip(*res_coords))
+
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
+    res_huc2 = res_huc2.set_index("res_id")
+    res_huc2 = res_huc2.loc[resers]
+    most_likely_groups = most_likely_groups.set_index("res")
+    basin_month_colors = {}
+
+    for basin in res_huc2["huc2_id"].unique():
+        bres = res_huc2[res_huc2["huc2_id"] == basin].index
+        bgroups = most_likely_groups.loc[bres]
+        basin_month_colors[basin] = [cmap(norm(i)) for i in bgroups.mean().values]
+
+    # color_dict = {
+    #     tuple(item): "w" for i, (k, item) in enumerate(BASIN_GROUPS.items())
+    # }
+
+    # color_vars = {}
+    # for wbd_id in wbd_ids:
+    #     for gbasins, color in color_dict.items():
+    #         if int(wbd_id) in gbasins:
+    #             color_vars[int(wbd_id)] = color
+
+    # other_bounds = [(wbd_map[i], "k", color_vars[i]) for i in color_vars.keys()]
+
+    other_bounds = []
+    for month in range(12):
+        temp_bounds = []
+        for basin in res_huc2["huc2_id"].unique():
+            bwbd = wbd_map[int(basin)]
+            color = basin_month_colors[basin][month]
+            temp_bounds.append((bwbd, "k", color))
+        other_bounds.append(temp_bounds)
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+
+    # fig, axes = plt.subplots(3, 4, sharex=True, sharey=True)
+    # axes = axes.flatten()
+    fig = plt.figure()
+    gs = mgridspec.GridSpec(3, 5, figure=fig, width_ratios=[10, 10, 10, 10, 1])
+    axes = []
+    for i in range(3):
+        for j in range(4):
+            axes.append(fig.add_subplot(gs[i, j]))
+
+    cbar_ax = fig.add_subplot(gs[:, 4])
+
+    # l, r, t, b
+    label_positions = [
+        [1, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1, 0, 0, 1],
+        [0, 0, 0, 1],
+        [0, 0, 0, 1],
+        [0, 0, 0, 1],
+    ]
+    maps = [
+        setup_map(
+            coords=[west, south, east, north],
+            other_bound=ob,
+            ax=ax,
+            label_positions=lp,
+            return_ticks=True,
+        )
+        for ax, lp, ob in zip(axes, label_positions, other_bounds)
+    ]
+
+    # resers = most_likely_groups["res"].values
+    # res_coords = [
+    #     (row.LONG_DD, row.LAT_DD)
+    #     for i, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
+    # ]
+    # res_x, res_y = list(zip(*res_coords))
+    # for month, map_info in zip(range(1, 13), maps):
+    #     m = map_info[0]
+    #     groups = most_likely_groups[month]
+    #     colors = [group_colors[g] for g in list(groups)]
+    #     m.scatter(
+    #         res_x,
+    #         res_y,
+    #         latlon=True,
+    #         marker="v",
+    #         color=colors,
+    #         # label=group,
+    #         zorder=4,
+    #         sizes=[40],
+    #     )
+
+    for i, ax in enumerate(axes):
+        ax.set_title(calendar.month_name[i + 1])
+
+    mvals, pvals = maps[8][1:]
+    xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
+    yticks = []
+    for i in pvals.values():
+        try:
+            yticks.append(i[1][0].get_position()[1])
+        except IndexError:
+            pass
+
+    for ax in axes:
+        ax.set_xticks(xticks)
+        ax.set_yticks(yticks)
+        ax.tick_params(
+            axis="both",
+            direction="in",
+            left=True,
+            right=True,
+            top=True,
+            bottom=True,
+            labelleft=False,
+            labelright=False,
+            labeltop=False,
+            labelbottom=False,
+            zorder=10,
+        )
+    plt.colorbar(
+        # ScalarMappable(norm=norm, cmap=cmap),
+        ScalarMappable(
+            norm=Normalize(vmin=1, vmax=10),
+            cmap=ListedColormap(color_pal.as_hex()[:10]),
+        ),
+        cax=cbar_ax,
+        orientation="vertical",
+        label="Most Likely Operational Mode",
+        aspect=4,
+        shrink=0.8,
+    )
+    plt.show()
+
+
 if __name__ == "__main__":
     sns.set_theme(context="notebook", palette="Set2", font_scale=1.2)
     args = parse_args()
@@ -585,9 +838,12 @@ if __name__ == "__main__":
     # basin_pairs = combinations(basins, 2)
     # for b1, b2 in basin_pairs:
     # plot_seasonal_tree_breakdown_basin_comparison([b1, b2], model_results)
-    plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results, "box")
+    # plot_seasonal_tree_breakdown_basin_comparison(args.basins, model_results, "box")
     # plot_basin_comparison_map(args.basins[0])
     # plot_grouped_basin_map()
     # find_similar_basins()
 
     # find_similar_reservoir_characteristics(model_results)
+
+    # plot_reservoir_group_access_map()
+    plot_reservoir_most_likely_group_maps(model_results)
