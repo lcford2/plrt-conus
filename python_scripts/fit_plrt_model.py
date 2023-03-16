@@ -1,10 +1,8 @@
 import argparse
 import copy
-import glob
 import os
-import pathlib
 import pickle
-from datetime import datetime, timedelta
+from datetime import datetime
 from multiprocessing import cpu_count
 from time import perf_counter as timer
 
@@ -27,106 +25,8 @@ from utils.timing_function import time_function
 from utils.utils import my_groupby
 
 
-def read_basin_data(basin: str) -> pd.DataFrame:
-    data_locs = {
-        "upper_col": {
-            "ready": "../upper_colorado_data/model_ready_data/"
-            "upper_col_data_net_inflow.csv",
-            "raw": "../upper_colorado_data/hydrodata_data/"
-            "req_upper_col_data.csv",
-        },
-        "pnw": {
-            "ready": "../pnw_data/model_ready_data/pnw_data_net_inflow.csv",
-            "raw": "../pnw_data/dam_data/*_data/*.csv",
-        },
-        "lower_col": {
-            # "ready": "../lower_col_data/model_ready_data/" \
-            # "lower_col_data_net_inflow.csv",
-            "ready": "../lower_col_data/model_ready_data/"
-            "lower_col_data_net_inflow_new_hoover.csv",
-            "raw": "../lower_col_data/lower_col_dam_data.csv",
-        },
-        "missouri": {
-            "ready": "../missouri_data/model_ready_data/"
-            "missouri_data_net_inflow.csv",
-            "raw": "../missouri_data/hydromet_data/*.csv",
-        },
-        "tva": {"ready": "../csv/tva_model_ready_data.csv"},
-    }
-
-    if basin == "colorado":
-        lfpath = data_locs["lower_col"]["ready"]
-        ldf = pd.read_csv(lfpath)
-        ldf["datetime"] = pd.to_datetime(ldf["datetime"])
-        ldf = ldf.set_index(["site_name", "datetime"])
-
-        ufpath = data_locs["upper_col"]["ready"]
-        udf = pd.read_csv(ufpath)
-        udf["datetime"] = pd.to_datetime(udf["datetime"])
-        udf = udf.set_index(["site_name", "datetime"])
-
-        df = ldf.append(udf)
-        df = df.sort_index()
-        df = df.dropna()
-    elif basin in data_locs:
-        fpath = pathlib.Path(data_locs[basin]["ready"])
-        df = pd.read_csv(fpath)
-        df["datetime"] = pd.to_datetime(df["datetime"])
-        df = df.set_index(["site_name", "datetime"])
-        df = df.sort_index()
-        df = df.dropna()
-    elif basin == "all":
-        df = pd.DataFrame()
-        for b in data_locs.keys():
-            fpath = data_locs[b]["ready"]
-            bdf = pd.read_csv(fpath)
-            bdf["datetime"] = pd.to_datetime(bdf["datetime"])
-            bdf = bdf.set_index(["site_name", "datetime"])
-            bdf = bdf.sort_index()
-            bdf = bdf.dropna()
-            if df.empty:
-                df = bdf
-            else:
-                df = pd.concat([df, bdf])
-    else:
-        raise NotImplementedError(f"No data available for basin {basin}")
-    return df
-
-
-def get_basin_meta_data(basin: str):
-    if basin == "tva":
-        files = ["../pickles/tva_res_meta.pickle"]
-    elif basin == "colorado":
-        files = [
-            "../apply_models/basin_output_no_ints/upper_col_meta.pickle",
-            "../apply_models/basin_output_no_ints/lower_col_meta.pickle",
-        ]
-    elif basin == "all":
-        files = glob.glob("../apply_models/basin_output_no_ints/*_meta.pickle")
-    else:
-        files = [f"../apply_models/basin_output_no_ints/{basin}_meta.pickle"]
-
-    meta = pd.DataFrame()
-    for file in files:
-        fmeta = pd.read_pickle(file)
-        meta = fmeta if meta.empty else pd.concat([meta, fmeta])
-    return meta
-
-
-def get_max_date_span(in_df):
-    df = pd.DataFrame()
-    df["date"] = in_df.index.get_level_values(1)
-    df["mask"] = 1
-    df.loc[
-        df["date"] - np.timedelta64(1, "D") == df["date"].shift(), "mask"
-    ] = 0
-    df["mask"] = df["mask"].cumsum()
-    span = df.loc[df["mask"] == df["mask"].value_counts().idxmax(), "date"]
-    return (span.min(), span.max())
-
-
 @time_function
-def load_resopsus_data(min_years):
+def load_resopsus_data(min_years=3):
     # if min_years == 5:
     #     data_file = config.get_file("merged_data")
     #     meta_file = config.get_file("merged_meta")
@@ -176,20 +76,6 @@ def prep_data(df, monthly=False):
     X = std_data.loc[:, columns]
     y = std_data["release"]
     return X, y, means, std
-
-
-def split_train_test_dt(index, date, level=None, keep=0):
-    # cannot check truthy here because level can be integer 0,
-    # which is equivalent to False
-    if level is not None:
-        test = index[
-            index.get_level_values(level) >= date - timedelta(days=keep)
-        ]
-        train = index[index.get_level_values(level) < date]
-    else:
-        test = index[index >= date]
-        train = index[index < date]
-    return train, test
 
 
 def split_train_test_res(index, test_res):
@@ -769,7 +655,6 @@ def simulate_plrt_model(
     X_test,
     parallel=True,
 ):
-
     # I need to keep track of actual storage and release outputs
     # as well as rolling weekly mean storage and release outputs
     track_df = pd.DataFrame(
