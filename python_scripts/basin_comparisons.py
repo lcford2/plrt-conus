@@ -666,8 +666,8 @@ def plot_reservoir_most_likely_group_maps(model_results):
         most_likely_groups, columns=["res", *range(1, 13)]
     )
     # norm = Normalize(vmin=0, vmax=11)
-    # cmap = get_cmap("Paired")
-    color_pal = sns.color_palette("Paired")
+    # cmap = get_cmap("Set3")
+    color_pal = sns.color_palette("Set3")
     norm = Normalize(vmin=1, vmax=10)
     cmap = ListedColormap(color_pal.as_hex()[:10])
     # group_colors = {i + 1: cmap(norm(i)) for i in range(10)}
@@ -809,7 +809,8 @@ def plot_reservoir_most_likely_group_maps(model_results):
         # ScalarMappable(norm=norm, cmap=cmap),
         ScalarMappable(
             norm=Normalize(vmin=1, vmax=10),
-            cmap=ListedColormap(color_pal.as_hex()[:10]),
+            # cmap=ListedColormap(color_pal.as_hex()[:10]),
+            cmap=cmap,
         ),
         cax=cbar_ax,
         orientation="vertical",
