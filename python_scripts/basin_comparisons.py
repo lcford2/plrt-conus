@@ -17,22 +17,15 @@ from fit_plrt_model import load_resopsus_data
 from joblib import Parallel, delayed
 from matplotlib.cm import ScalarMappable, get_cmap
 from matplotlib.colors import ListedColormap, Normalize
-from parameter_sweep_analysis import (
-    get_contiguous_wbds,
-    load_model_results,
-    setup_map,
-)
+from parameter_sweep_analysis import get_contiguous_wbds, load_model_results, setup_map
 from scipy.spatial.distance import cosine as cosine_dist
 from single_tree_breakdown import get_groups_for_model
 from utils.config import config
-from utils.io import (
-    load_feather,
-    load_huc2_basins,
-    load_huc2_name_map,
-    write_pickle,
-)
-from utils.utils import sorted_k_partitions
+from utils.io import load_feather, load_huc2_basins, load_huc2_name_map, write_pickle
 from utils.metrics import get_nnse, get_nrmse
+from utils.utils import sorted_k_partitions
+
+plt.rcParams["svg.fonttype"] = "none"
 
 CPUS = cpu_count()
 os.environ["OMP_NUM_THREADS"] = str(CPUS)
@@ -67,7 +60,32 @@ def parse_args():
         help="The model results that should be plotted",
         required=False,
     )
-    return parser.parse_args()
+    return parser.parse_known_args()
+
+
+def parse_unknown_args(unknown_args):
+    pattern = re.compile(r"--(.*)=(.*)")
+    output = {}
+    for arg in unknown_args:
+        search_result = re.search(pattern, arg)
+        if search_result:
+            key = search_result.group(1)
+            value = search_result.group(2)
+
+            if value in ("true", "True"):
+                value = True
+            elif value in ("false", "False"):
+                value = False
+            elif value.isdecimal():
+                value = int(value)
+            else:
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass
+
+            output[key] = value
+    return output
 
 
 def plot_basin_tree_breakdown_comparison(basins, results):
@@ -75,9 +93,7 @@ def plot_basin_tree_breakdown_comparison(basins, results):
     groups = get_groups_for_model(results)
     groups.name = "group"
     groups = groups.to_frame()
-    groups["basin"] = [
-        huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
-    ]
+    groups["basin"] = [huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)]
     groups = groups[groups["basin"].isin(basins)]
     counts = groups.groupby(["res_id", "basin"])["group"].value_counts()
     counts.name = "count"
@@ -103,17 +119,13 @@ def plot_basin_tree_breakdown_comparison(basins, results):
     plt.show()
 
 
-def plot_seasonal_tree_breakdown_basin_comparison(
-    basins, results, plot_type="line"
-):
+def plot_seasonal_tree_breakdown_basin_comparison(basins, results, plot_type="line"):
     huc2 = load_huc2_basins()
     # huc2_names = load_huc2_name_map()
     groups = get_groups_for_model(results)
     groups.name = "group"
     groups = groups.to_frame()
-    groups["basin"] = [
-        huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)
-    ]
+    groups["basin"] = [huc2.loc[i, "huc2_id"] for i in groups.index.get_level_values(0)]
     groups = groups[groups["basin"].isin(basins)]
     groups["month"] = groups.index.get_level_values(1).month
     groups = groups.reset_index()
@@ -171,9 +183,7 @@ def plot_seasonal_tree_breakdown_basin_comparison(
         hspace=0.106,
         wspace=0.051,
     )
-    output_dir = os.path.expanduser(
-        "~/Dropbox/plrt-conus-figures/basin_comparison"
-    )
+    output_dir = os.path.expanduser("~/Dropbox/plrt-conus-figures/basin_comparison")
     basin_string = "-".join(map(str, basins))
     if plot_type == "box":
         output_file = f"monthly_basin_compare_{basin_string}_box.png"
@@ -231,9 +241,7 @@ def plot_basin_comparison_map(basin):
         -66.093750,
         53.382373,
     )
-    setup_map(
-        ax=ax, coords=[west, south, east, north], other_bound=other_bounds
-    )
+    setup_map(ax=ax, coords=[west, south, east, north], other_bound=other_bounds)
     plt.colorbar(
         ScalarMappable(norm=norm, cmap=cmap),
         cax=cbar_ax,
@@ -299,9 +307,7 @@ def plot_grouped_basin_map():
     #     x, y = centroid.x, centroid.y
     #     print(x, y)
     #     ax.text(x, y, wbd_id)
-    handles = [
-        mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)
-    ]
+    handles = [mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)]
     # labels = [str(i) for i in best_part]
     labels = BASIN_GROUPS.keys()
     ax = plt.gca()
@@ -313,9 +319,7 @@ def find_similar_basins():
     comp_data = load_feather(
         config.get_dir("agg_results") / "basin_comp_metrics.feather",
     )
-    comp_data = comp_data.pivot(
-        index="level_0", columns="level_1", values="cosine"
-    )
+    comp_data = comp_data.pivot(index="level_0", columns="level_1", values="cosine")
     all_df = pd.DataFrame(index=range(1, 19), columns=range(1, 19))
 
     for i in range(1, 18):
@@ -388,9 +392,7 @@ def find_similar_basins():
             next_best_group = group
             break
 
-    remaining = [
-        i for i in basins if i not in [*best_group[0], *next_best_group[0]]
-    ]
+    remaining = [i for i in basins if i not in [*best_group[0], *next_best_group[0]]]
 
     for g in groups_by_size[len(remaining)]:
         if g[0] == remaining:
@@ -411,8 +413,7 @@ def find_similar_basins():
     nitems = len(similar_filtered)
     chunk_size = nitems // (nprocs - 1)
     chunked_parts = [
-        similar_filtered[i * chunk_size : (i + 1) * chunk_size]
-        for i in range(nprocs)
+        similar_filtered[i * chunk_size : (i + 1) * chunk_size] for i in range(nprocs)
     ]
 
     results = Parallel(n_jobs=48, verbose=11)(
@@ -432,9 +433,7 @@ def find_similar_basins():
         (similar_filtered[i], j, find_partitions_size_diff(similar_filtered[i]))
         for i, j in mean
     ]
-    write_pickle(
-        output, config.get_dir("agg_results") / "best_partitions_3.pickle"
-    )
+    write_pickle(output, config.get_dir("agg_results") / "best_partitions_3.pickle")
 
     # groups_by_size = defaultdict(list)
     # for i, j in mean:
@@ -521,15 +520,11 @@ def find_similar_reservoir_characteristics(model_results):
             rdf2 = seasonal_percentages[res2]
             total_distance = 0
             for column in rdf2.columns:
-                total_distance += np.abs(
-                    cosine_dist(rdf1[column], rdf2[column])
-                )
+                total_distance += np.abs(cosine_dist(rdf1[column], rdf2[column]))
             distances.append((res1, res2, total_distance))
             completed_pairs.append((res1, res2))
 
-    distances = pd.DataFrame.from_records(
-        distances, columns=["res1", "res2", "dist"]
-    )
+    distances = pd.DataFrame.from_records(distances, columns=["res1", "res2", "dist"])
     distances[
         [
             "res1_rt",
@@ -585,14 +580,10 @@ def find_similar_reservoir_characteristics(model_results):
         closest_diffs,
         columns=["res", "mean_dist", *diff_columns],
     )
-    closest_df = pd.DataFrame.from_records(
-        closest_records, columns=distances.columns
-    )
+    closest_df = pd.DataFrame.from_records(closest_records, columns=distances.columns)
     fig, axes = plt.subplots(1, 3, sharey=True)
     axes = axes.flatten()
-    xlabels = [
-        f"Absolute Difference {i}" for i in ["RT", "St. Cap.", "r(R, I)"]
-    ]
+    xlabels = [f"Absolute Difference {i}" for i in ["RT", "St. Cap.", "r(R, I)"]]
     for column, ax, xlabel in zip(diff_columns, axes, xlabels):
         # y = closest_diffs["mean_dist"]
         # x = closest_diffs[column]
@@ -628,8 +619,7 @@ def plot_reservoir_group_access_map():
     group_colors = {group: color_pal[i] for i, group in enumerate(groups)}
 
     color_dict = {
-        tuple(item): color_pal[i]
-        for i, (k, item) in enumerate(BASIN_GROUPS.items())
+        tuple(item): color_pal[i] for i, (k, item) in enumerate(BASIN_GROUPS.items())
     }
 
     color_vars = {}
@@ -717,9 +707,7 @@ def plot_reservoir_most_likely_group_maps(model_results):
     ]
     res_x, res_y = list(zip(*res_coords))
 
-    res_huc2 = load_feather(
-        config.get_dir("spatial_data") / "updated_res_huc2.feather"
-    )
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
     res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
     res_huc2 = res_huc2.set_index("res_id")
     res_huc2 = res_huc2.loc[resers]
@@ -729,9 +717,7 @@ def plot_reservoir_most_likely_group_maps(model_results):
     for basin in res_huc2["huc2_id"].unique():
         bres = res_huc2[res_huc2["huc2_id"] == basin].index
         bgroups = most_likely_groups.loc[bres]
-        basin_month_colors[basin] = [
-            cmap(norm(i)) for i in bgroups.mean().values
-        ]
+        basin_month_colors[basin] = [cmap(norm(i)) for i in bgroups.mean().values]
 
     # color_dict = {
     #     tuple(item): "w" for i, (k, item) in enumerate(BASIN_GROUPS.items())
@@ -886,12 +872,8 @@ def rank_reservoirs_by_performance(
     test_nnse = get_nnse(test_data, "actual", "model", test_grouper)
     test_nrmse = get_nrmse(test_data, "actual", "model", test_grouper)
 
-    train_metrics = pd.DataFrame.from_dict(
-        {"NNSE": train_nnse, "NRMSE": train_nrmse}
-    )
-    test_metrics = pd.DataFrame.from_dict(
-        {"NNSE": test_nnse, "NRMSE": test_nrmse}
-    )
+    train_metrics = pd.DataFrame.from_dict({"NNSE": train_nnse, "NRMSE": train_nrmse})
+    test_metrics = pd.DataFrame.from_dict({"NNSE": test_nnse, "NRMSE": test_nrmse})
 
     if plot_pairs:
         train_fg = sns.pairplot(train_metrics)
@@ -900,14 +882,213 @@ def rank_reservoirs_by_performance(
         test_fg.figure.suptitle("Testing Reservoirs")
         plt.show()
 
-    return train_metrics.sort_values(by="NNSE"), test_metrics.sort_values(
-        by="NNSE"
+    return train_metrics.sort_values(by="NNSE"), test_metrics.sort_values(by="NNSE")
+
+
+def plot_basin_mean_performance(
+    model_results,
+    metric="NNSE",
+    data_set="train",
+    plot_res=False,
+    monthly=False,
+):
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = res_huc2.set_index("res_id")
+
+    # get name of wbd files
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    # get grand database
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+
+    df = model_results[f"{data_set}_data"]
+    if metric == "NNSE":
+        metric_func = get_nnse
+    else:
+        metric_func = get_nrmse
+
+    if monthly:
+        scores = metric_func(
+            df,
+            "actual",
+            "model",
+            [
+                df.index.get_level_values(0),
+                df.index.get_level_values(1).month,
+            ],
+        )
+        scores = scores.unstack()
+    else:
+        scores = metric_func(df, "actual", "model", "res_id")
+
+    resers = scores.index
+    res_huc2 = res_huc2.loc[resers]
+    if monthly:
+        res_huc2 = res_huc2.join(scores)
+    else:
+        res_huc2[metric] = scores
+
+    scores = res_huc2.groupby("huc2_id").mean()
+
+    if monthly:
+        max_score = scores.max().max()
+        min_score = scores.min().min()
+    else:
+        max_score = scores.max()
+        min_score = scores.min()
+
+    score_range = max_score - min_score
+
+    norm = Normalize(
+        vmin=max([min_score - score_range * 0.05, 0]),
+        vmax=min([max_score + score_range * 0.05, 1]),
     )
+    cmap = get_cmap("viridis")
+    other_bounds = []
+    if monthly:
+        for month in range(1, 13):
+            temp_bounds = []
+            for basin in scores.index:
+                wbd = wbd_map[int(basin)]
+                color = cmap(norm(scores.loc[basin, month]))
+                temp_bounds.append((wbd, "k", color))
+            other_bounds.append(temp_bounds)
+    else:
+        for wbd_id, score in scores.items():
+            wbd = wbd_map[int(wbd_id)]
+            color = cmap(norm(score))
+            other_bounds.append((wbd, "k", color))
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+
+    if monthly:
+        fig = plt.figure()
+        gs = mgridspec.GridSpec(3, 5, figure=fig, width_ratios=[10, 10, 10, 10, 1])
+        axes = []
+        for i in range(3):
+            for j in range(4):
+                axes.append(fig.add_subplot(gs[i, j]))
+        cbar_ax = fig.add_subplot(gs[:, 4])
+        label_positions = [
+            [1, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [1, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [1, 0, 0, 1],
+            [0, 0, 0, 1],
+            [0, 0, 0, 1],
+            [0, 0, 0, 1],
+        ]
+        maps = [
+            setup_map(
+                coords=[west, south, east, north],
+                other_bound=ob,
+                ax=ax,
+                label_positions=lp,
+                return_ticks=True,
+            )
+            for ax, lp, ob in zip(axes, label_positions, other_bounds)
+        ]
+        for i, ax in enumerate(axes):
+            ax.set_title(calendar.month_name[i + 1])
+        mvals, pvals = maps[8][1:]
+        xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
+        yticks = []
+        for i in pvals.values():
+            try:
+                yticks.append(i[1][0].get_position()[1])
+            except IndexError:
+                pass
+
+        for ax in axes:
+            ax.set_xticks(xticks)
+            ax.set_yticks(yticks)
+            ax.tick_params(
+                axis="both",
+                direction="in",
+                left=True,
+                right=True,
+                top=True,
+                bottom=True,
+                labelleft=False,
+                labelright=False,
+                labeltop=False,
+                labelbottom=False,
+                zorder=10,
+            )
+    else:
+        gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
+        ax = fig.add_subplot(gs[0, 0])
+        cbar_ax = fig.add_subplot(gs[:, 1])
+
+        m = setup_map(
+            coords=[west, south, east, north], other_bound=other_bounds, ax=ax
+        )
+        maps = [m]
+
+    if plot_res:
+        res_coords = [
+            (row.LONG_DD, row.LAT_DD)
+            for i, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
+        ]
+        res_x, res_y = list(zip(*res_coords))
+
+        for m in maps:
+            m.scatter(
+                res_x,
+                res_y,
+                latlon=True,
+                marker="v",
+                color="r",
+                zorder=4,
+                sizes=res_huc2.loc[resers, metric].values * 50,
+            )
+
+    plt.colorbar(
+        ScalarMappable(norm=norm, cmap=cmap),
+        cax=cbar_ax,
+        orientation="vertical",
+        label=f"Basin Average {metric}",
+        aspect=4,
+        shrink=0.8,
+    )
+    fig.suptitle(f"{data_set.title()}ing Reservoirs")
+    # plt.subplots_adjust(
+    #     top=0.894,
+    #     bottom=0.049,
+    #     left=0.058,
+    #     right=0.937,
+    #     hspace=0.2,
+    #     wspace=0.142,
+    # )
+    plt.show()
+    # if monthly:
+    #     file_name = f"{data_set}_{metric}_monthly.png"
+    # else:
+    #     file_name = f"{data_set}_{metric}.png"
+
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         f"~/Dropbox/plrt-conus-figures/basin_performance/{file_name}"
+    #     )
+    # )
 
 
 if __name__ == "__main__":
     sns.set_theme(context="notebook", palette="Set2", font_scale=1.1)
-    args = parse_args()
+    args, remaining = parse_args()
+    func_args = parse_unknown_args(remaining)
 
     if args.model_path:
         model_path = args.model_path
@@ -915,9 +1096,7 @@ if __name__ == "__main__":
         model_path = "TD4_MSS0.09"
 
     model_results = load_model_results(
-        config.get_dir("results")
-        / "monthly_merged_data_set_minyr3"
-        / model_path
+        config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path
     )
     # plot_basin_tree_breakdown_comparison(args.basins, model_results)
     # from itertools import combinations
@@ -935,4 +1114,9 @@ if __name__ == "__main__":
     # plot_reservoir_group_access_map()
     # plot_reservoir_most_likely_group_maps(model_results)
 
-    rank_reservoirs_by_performance(model_results, monthly_group=True, plot_pairs=True)
+    # train_metrics, test_metrics = rank_reservoirs_by_performance(
+    #     model_results,
+    #     monthly_group=False,
+    #     plot_pairs=False
+    # )
+    plot_basin_mean_performance(model_results, **func_args)
