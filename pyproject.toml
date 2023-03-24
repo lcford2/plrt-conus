@@ -18,6 +18,12 @@ exclude = '''
 )/
 '''
 
+[tool.ruff]
+select = ["E", "F"]
+ignore = ["E402", "W503", "E203", "N803", "N806"]
+line-length = 88
+
+
 [tool.poetry]
 name = "plrt-conus"
 version = "0.1.2"
@@ -49,6 +55,8 @@ six = "1.16.0"
 tabulate = "0.9.0"
 threadpoolctl = "3.1.0"
 geopandas = "^0.12.2"
+ruff = "^0.0.258"
+flake8-to-ruff = "^0.0.233"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.9.0"
