@@ -24,6 +24,17 @@ from utils.metrics import get_nnse
 from utils.timing_function import time_function
 from utils.utils import my_groupby
 
+START_TIME = timer()
+
+
+def log(string, start_time=None):
+    ts = timer()
+    if start_time:
+        ts -= start_time
+    else:
+        ts -= START_TIME
+    print(f"[{ts:.1f} sec elapsed] {string}")
+
 
 @time_function
 def load_resopsus_data(min_years=3):
@@ -34,9 +45,7 @@ def load_resopsus_data(min_years=3):
     #     data = load_feather(data_file, index_keys=("res_id", "date"))
     #     data["inflow"] = data["net_inflow"]
     # else:
-    data_file = (
-        config.get_dir("model_ready_data") / f"resops_{min_years}yr.feather"
-    )
+    data_file = config.get_dir("model_ready_data") / f"resops_{min_years}yr.feather"
     data = load_feather(data_file, index_keys=("res_id", "date"))
     data = merge_mb_and_resops(data)
     data["inflow"] = data["net_inflow"]
@@ -108,14 +117,10 @@ def split_train_test_index_by_res(df, prop=0.8):
 
 
 def split_train_test_by_basin(resers, train_prop):
-    res_huc2 = load_feather(
-        config.get_dir("spatial_data") / "updated_res_huc2.feather"
-    )
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
     res_huc2 = res_huc2[res_huc2["res_id"].isin(resers)]
     hucs = res_huc2["huc2_id"].unique()
-    huc_resers = {
-        i: res_huc2[res_huc2["huc2_id"] == i]["res_id"].values for i in hucs
-    }
+    huc_resers = {i: res_huc2[res_huc2["huc2_id"] == i]["res_id"].values for i in hucs}
     basin_train, basin_test = {}, {}
     for huc_id, huc_res in huc_resers.items():
         n_train_res = int(np.floor(len(huc_res) * train_prop))
@@ -127,10 +132,34 @@ def split_train_test_by_basin(resers, train_prop):
     return basin_train, basin_test
 
 
+def split_train_test_by_basin_meta_var(resers, meta, meta_var, threshold):
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = res_huc2[res_huc2["res_id"].isin(resers)]
+    hucs = res_huc2["huc2_id"].unique()
+    huc_resers = {i: res_huc2[res_huc2["huc2_id"] == i]["res_id"].values for i in hucs}
+    basin_train, basin_test = {}, {}
+    if threshold < 0:
+        threshold = abs(threshold)
+        flip_test_train = True
+    else:
+        flip_test_train = False
+
+    for huc_id, huc_res in huc_resers.items():
+        huc_meta = meta.loc[huc_res]
+        cut_off = huc_meta[meta_var].quantile(threshold)
+        train_res = huc_meta[huc_meta[meta_var] < cut_off].index
+        test_res = huc_meta[huc_meta[meta_var] >= cut_off].index
+        if flip_test_train:
+            basin_train[huc_id] = test_res
+            basin_test[huc_id] = train_res
+        else:
+            basin_train[huc_id] = train_res
+            basin_test[huc_id] = test_res
+    return basin_train, basin_test
+
+
 def merge_mb_and_resops(df):
-    mb_df = load_feather(
-        config.get_dir("data") / "model_ready" / "mb_data.feather"
-    )
+    mb_df = load_feather(config.get_dir("data") / "model_ready" / "mb_data.feather")
     mb_df = mb_df.rename(
         columns={
             "GRAND_ID": "res_id",
@@ -166,9 +195,7 @@ def merge_mb_and_resops(df):
     for index in mb_df.index:
         if index in df.index:
             existing_keys.append(index)
-    df.loc[existing_keys, expected_columns] = mb_df.loc[
-        existing_keys, expected_columns
-    ]
+    df.loc[existing_keys, expected_columns] = mb_df.loc[existing_keys, expected_columns]
     left_out = mb_df.drop(existing_keys)
     df = pd.concat([df, left_out])
     df["good_row"] = df["good_row"].astype(bool)
@@ -185,9 +212,7 @@ def unstandardize(series, mean, std):
         series_act = series.copy()
         for month in range(1, 13):
             mseries = (
-                series.loc[
-                    idx[:, series.index.get_level_values(1).month == month]
-                ]
+                series.loc[idx[:, series.index.get_level_values(1).month == month]]
                 .unstack()
                 .T
             )
@@ -254,33 +279,36 @@ def pipeline(args):
     # train_index = X[X.index.get_level_values(1) < datetime(2010, 1, 1)].index
     # test_index = X[X.index.get_level_values(1) >= datetime(2010, 1, 1)].index
     # train_index, test_index = split_train_test_index_by_res(X, prop=0.8)
-    elapsed = timer() - start_time
-    print(
-        f"Splitting testing and training reservoirs [{elapsed:.1f} sec elapsed]"
-    )
+
+    log("Splitting testing and training reservoirs", start_time)
+
     np.random.seed(44)
-    train_fraction = 0.8
-    basin_train, basin_test = split_train_test_by_basin(
-        reservoirs, train_fraction
-    )
+    splitting_method = args.splitting_method
+    if splitting_method[0] == "basin":
+        basin_train, basin_test = split_train_test_by_basin(
+            reservoirs, float(splitting_method[-1])
+        )
+    else:
+        basin_train, basin_test = split_train_test_by_basin_meta_var(
+            reservoirs, meta, splitting_method[1], float(splitting_method[-1])
+        )
+
     train_res, test_res = [], []
     for resers in basin_train.values():
         train_res.extend(resers)
     for resers in basin_test.values():
         test_res.extend(resers)
 
+    print(f"Number of training reservoirs: {len(train_res)}")
+    print(f"Number of testing reservoirs: {len(test_res)}")
+
     # n_train_res = int(np.floor(len(reservoirs) * train_fraction))
     # train_res = np.random.choice(reservoirs, n_train_res, replace=False)
     # test_res = [i for i in reservoirs if i not in train_res]
 
-    elapsed = timer() - start_time
-    print(f"Getting training and testing data set [{elapsed:.1f} sec elapsed]")
-    X_train = X.loc[
-        X.index.get_level_values(0).isin(train_res), X_vars
-    ].sort_index()
-    X_test = X.loc[
-        X.index.get_level_values(0).isin(test_res), X_vars
-    ].sort_index()
+    log("Getting training and testing data set", start_time)
+    X_train = X.loc[X.index.get_level_values(0).isin(train_res), X_vars].sort_index()
+    X_test = X.loc[X.index.get_level_values(0).isin(test_res), X_vars].sort_index()
     X_train["const"] = 1
     X_test["const"] = 1
     X_vars.insert(0, "const")
@@ -306,14 +334,12 @@ def pipeline(args):
         train_values = []
         for res in train_res:
             train_values.extend(
-                [meta.loc[res, tree_var]]
-                * X_train.loc[pd.IndexSlice[res, :]].shape[0]
+                [meta.loc[res, tree_var]] * X_train.loc[pd.IndexSlice[res, :]].shape[0]
             )
         test_values = []
         for res in test_res:
             test_values.extend(
-                [meta.loc[res, tree_var]]
-                * X_test.loc[pd.IndexSlice[res, :]].shape[0]
+                [meta.loc[res, tree_var]] * X_test.loc[pd.IndexSlice[res, :]].shape[0]
             )
         X_train[tree_var] = train_values
         X_test[tree_var] = test_values
@@ -348,8 +374,8 @@ def pipeline(args):
             min_samples_split=min_samples_split,
         )
 
-        elapsed = timer() - start_time
-        print(f"Fitting model [{elapsed:.1f} sec elapsed]")
+        log("Fitting model", start_time)
+
         time_function(model.fit)()
 
         params, groups = get_params_and_groups(X_train, model)
@@ -369,8 +395,9 @@ def pipeline(args):
 
         fitted = time_function(model.predict)()
         preds = time_function(model.predict)(X_test)
-        elapsed = timer() - start_time
-        print(f"Simulating model [{elapsed:.1f} sec elapsed]")
+
+        log("Simulating model", start_time)
+
         simuled = simulate_plrt_model(
             model,
             "model",
@@ -412,8 +439,8 @@ def pipeline(args):
         )
         simuled = simuled[["release", "storage"]].dropna()
 
-    elapsed = timer() - start_time
-    print(f"Preparing Output [{elapsed:.1f} sec elapsed]")
+    log("Preparing Output", start_time)
+
     fitted = pd.Series(fitted, index=X_train.index)
     preds = pd.Series(preds, index=X_test.index)
     simmed = simuled["release"]
@@ -503,15 +530,9 @@ def pipeline(args):
     test_data = pd.DataFrame(dict(actual=y_test_act, model=preds_act))
     simmed_data = pd.DataFrame(dict(actual=y_test_sim, model=simmed))
 
-    train_res_scores = pd.DataFrame(
-        index=reservoirs, columns=["NSE", "RMSE", "NNSE"]
-    )
-    test_res_scores = pd.DataFrame(
-        index=reservoirs, columns=["NSE", "RMSE", "NNSE"]
-    )
-    simmed_res_scores = pd.DataFrame(
-        index=reservoirs, columns=["NSE", "RMSE", "NNSE"]
-    )
+    train_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE", "NNSE"])
+    test_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE", "NNSE"])
+    simmed_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE", "NNSE"])
 
     train_res_scores["NSE"] = my_groupby(train_data, train_res_grouper).apply(
         lambda x: r2_score(x["actual"], x["model"])
@@ -531,18 +552,14 @@ def pipeline(args):
     test_res_scores["RMSE"] = my_groupby(test_data, test_res_grouper).apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
     )
-    test_res_scores["NNSE"] = get_nnse(
-        test_data, "actual", "model", test_res_grouper
-    )
+    test_res_scores["NNSE"] = get_nnse(test_data, "actual", "model", test_res_grouper)
 
     results["test_res_scores"] = test_res_scores
     simmed_res_grouper = simmed_data.index.get_level_values(0)
-    simmed_res_scores["NSE"] = my_groupby(
-        simmed_data, simmed_res_grouper
-    ).apply(lambda x: r2_score(x["actual"], x["model"]))
-    simmed_res_scores["RMSE"] = my_groupby(
-        simmed_data, simmed_res_grouper
-    ).apply(
+    simmed_res_scores["NSE"] = my_groupby(simmed_data, simmed_res_grouper).apply(
+        lambda x: r2_score(x["actual"], x["model"])
+    )
+    simmed_res_scores["RMSE"] = my_groupby(simmed_data, simmed_res_grouper).apply(
         lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
     )
     simmed_res_scores["NNSE"] = get_nnse(
@@ -553,9 +570,7 @@ def pipeline(args):
 
     print(simmed_res_scores.describe().to_markdown(floatfmt="0.3f"))
 
-    train_quant, _ = pd.qcut(
-        train_data["actual"], 3, labels=False, retbins=True
-    )
+    train_quant, _ = pd.qcut(train_data["actual"], 3, labels=False, retbins=True)
     quant_scores = pd.DataFrame(index=[0, 1, 2], columns=["NSE", "RMSE"])
     train_data["bin"] = train_quant
 
@@ -583,7 +598,8 @@ def pipeline(args):
         model_set = f"monthly_{model_set}"
     assim_mod = f"_{args.assim}" if args.assim else ""
     mss_mod = f"_MSS{min_samples_split:0.2f}"
-    foldername = f"TD{max_depth}{assim_mod}{mss_mod}"
+    sm_mod = f"_SM_{'_'.join(splitting_method)}"
+    foldername = f"TD{max_depth}{assim_mod}{mss_mod}{sm_mod}"
     folderpath = config.get_dir("results") / model_set / foldername
     # folderpath = pathlib.Path("..", "results", model_set, foldername)
 
@@ -598,9 +614,7 @@ def pipeline(args):
             folderpath = (
                 config.get_dir("results")
                 / model_set
-                / "_".join(
-                    [foldername, datetime.today().strfime("%Y%m%d_%H%M")]
-                )
+                / "_".join([foldername, datetime.today().strfime("%Y%m%d_%H%M")])
             )
             print(f"Saving at {folderpath} instead.")
             folderpath.mkdir()
@@ -636,8 +650,7 @@ def pipeline(args):
 
     # write the random effects to a csv file for easy access
     coefs.to_csv((folderpath / "random_effects.csv").as_posix())
-    elapsed = timer() - start_time
-    print(f"Total elapsed time {elapsed:.1f} sec")
+    log("Done", start_time)
 
 
 def simulate_plrt_model(
@@ -672,9 +685,9 @@ def simulate_plrt_model(
         rdf = X_act.loc[idx[res, :], :]
         # rolling 7 day means so we need 7 days of actual values
         first_seven = rdf.index.get_level_values(1).values[:7]
-        track_df.loc[
+        track_df.loc[idx[res, first_seven], ["release_pre", "storage_pre"]] = X_act.loc[
             idx[res, first_seven], ["release_pre", "storage_pre"]
-        ] = X_act.loc[idx[res, first_seven], ["release_pre", "storage_pre"]]
+        ]
         start_dates[res] = first_seven[-1]
 
     # find the initial rolling release and storage values
@@ -779,9 +792,7 @@ def simul_reservoir(
         reg_vars = reg_vars[:cindex] + reg_vars[index_after_const:]
 
     roll_storage = pd.Series(index=rdf.index, dtype=np.float64)
-    roll_storage.loc[idx[res, dates[0]]] = rdf.loc[
-        idx[res, dates[0]], "storage_roll7"
-    ]
+    roll_storage.loc[idx[res, dates[0]]] = rdf.loc[idx[res, dates[0]], "storage_roll7"]
 
     # monthly = False
     # if hasattr(means.index, "levels"):
@@ -814,9 +825,9 @@ def simul_reservoir(
         reg_vars_nsd.remove("sto_diff")
 
         if monthly:
-            X_r = (
-                X_r - means.loc[pd.IndexSlice[res, month], reg_vars_nsd]
-            ) / std.loc[pd.IndexSlice[res, month], reg_vars_nsd]
+            X_r = (X_r - means.loc[pd.IndexSlice[res, month], reg_vars_nsd]) / std.loc[
+                pd.IndexSlice[res, month], reg_vars_nsd
+            ]
 
             X_r["sto_diff"] = X_r["storage_pre"] - (
                 (
@@ -826,14 +837,9 @@ def simul_reservoir(
                 / std.loc[pd.IndexSlice[res, month], "storage_roll7"]
             )
         else:
-            X_r = (X_r - means.loc[res, reg_vars_nsd]) / std.loc[
-                res, reg_vars_nsd
-            ]
+            X_r = (X_r - means.loc[res, reg_vars_nsd]) / std.loc[res, reg_vars_nsd]
             X_r["sto_diff"] = X_r["storage_pre"] - (
-                (
-                    rdf.loc[loc, "storage_roll7"]
-                    - means.loc[res, "storage_roll7"]
-                )
+                (rdf.loc[loc, "storage_roll7"] - means.loc[res, "storage_roll7"])
                 / std.loc[res, "storage_roll7"]
             )
 
@@ -866,13 +872,9 @@ def simul_reservoir(
                 + means.loc[pd.IndexSlice[res, month], "release"]
             )
         else:
-            release_act = (
-                release * std.loc[res, "release"] + means.loc[res, "release"]
-            )
+            release_act = release * std.loc[res, "release"] + means.loc[res, "release"]
         # calculate storage from mass balance
-        storage = (
-            rdf.loc[loc, "storage_pre"] + rdf.loc[loc, "inflow"] - release_act
-        )
+        storage = rdf.loc[loc, "storage_pre"] + rdf.loc[loc, "inflow"] - release_act
         # keep storage and release within bounds
         if storage > upper_bounds.loc[res, "storage"]:
             storage = upper_bounds.loc[res, "storage"]
@@ -891,14 +893,10 @@ def simul_reservoir(
         # if we are not at the last day, store values needed for tomorrow
         if date != end_date:
             tomorrow = date + np.timedelta64(1, "D")
-            prev_seven = pd.date_range(
-                tomorrow - np.timedelta64(6, "D"), tomorrow
-            )
+            prev_seven = pd.date_range(tomorrow - np.timedelta64(6, "D"), tomorrow)
 
             if assim:
-                offset = (
-                    (date - start_date) / np.timedelta64(1, "D")
-                ) % assim_shift
+                offset = ((date - start_date) / np.timedelta64(1, "D")) % assim_shift
                 if offset == 0:
                     rdf.loc[idx[res, tomorrow], "storage_pre"] = track_df.loc[
                         idx[res, tomorrow], "storage_pre"
@@ -942,7 +940,7 @@ def parse_args(arg_list=None):
     )
     parser.add_argument(
         "--min-years",
-        default=5,
+        default=3,
         choices=range(1, 6),
         type=int,
         help="How many years of data is required for a reservoir to be valid?",
@@ -958,8 +956,7 @@ def parse_args(arg_list=None):
             "semi-annually",
             "yearly",
         ),
-        help="Frequency at which to assimilate observed"
-        " storage and release values",
+        help="Frequency at which to assimilate observed" " storage and release values",
     )
     parser.add_argument(
         "-M",
@@ -972,8 +969,7 @@ def parse_args(arg_list=None):
         "--mss",
         type=float,
         default=0.05,
-        help="Fraction of samples required to be in a child"
-        " node to perform a split",
+        help="Fraction of samples required to be in a child" " node to perform a split",
     )
     parser.add_argument(
         "--data-init",
@@ -996,6 +992,16 @@ def parse_args(arg_list=None):
         action="store_true",
         default=False,
         help="Standardize variables using monthly mean and std values.",
+    )
+    parser.add_argument(
+        "-S",
+        "--splitting_method",
+        type=str,
+        nargs="+",
+        default=["basin", "0.8"],
+        help="How should the training and the testing split be split? "
+        + "If len = 2, should be 'basin' 'proportion'. "
+        + "If len = 3, should be 'meta' 'meta var' 'threshold'",
     )
     if arg_list:
         return parser.parse_args(arg_list)
