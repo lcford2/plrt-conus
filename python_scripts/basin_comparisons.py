@@ -1,5 +1,6 @@
 import argparse
 import calendar
+import glob
 import os
 import re
 from collections import defaultdict
@@ -23,6 +24,7 @@ from single_tree_breakdown import get_groups_for_model
 from utils.config import config
 from utils.io import load_feather, load_huc2_basins, load_huc2_name_map, write_pickle
 from utils.metrics import get_nnse, get_nrmse
+from utils.plot_tools import get_pretty_var_name, mxbline
 from utils.utils import sorted_k_partitions
 
 plt.rcParams["svg.fonttype"] = "none"
@@ -936,6 +938,7 @@ def plot_basin_mean_performance(
         max_score = scores.max().max()
         min_score = scores.min().min()
     else:
+        scores = scores[metric]
         max_score = scores.max()
         min_score = scores.min()
 
@@ -1028,6 +1031,7 @@ def plot_basin_mean_performance(
                 zorder=10,
             )
     else:
+        fig = plt.figure()
         gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
         ax = fig.add_subplot(gs[0, 0])
         cbar_ax = fig.add_subplot(gs[:, 1])
@@ -1085,6 +1089,231 @@ def plot_basin_mean_performance(
     # )
 
 
+def plot_basin_mean_performance_dset_tile(
+    model_results,
+    metric="NNSE",
+):
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = res_huc2.set_index("res_id")
+
+    # get name of wbd files
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    if metric == "NNSE":
+        metric_func = get_nnse
+    else:
+        metric_func = get_nrmse
+
+    train_scores = metric_func(model_results["train_data"], "actual", "model", "res_id")
+    test_scores = metric_func(model_results["test_data"], "actual", "model", "res_id")
+    simmed_scores = metric_func(
+        model_results["simmed_data"], "actual", "model", "res_id"
+    )
+
+    train_resers = train_scores.index
+    test_resers = test_scores.index
+    train_res_huc2 = res_huc2.loc[train_resers]
+    test_res_huc2 = res_huc2.loc[test_resers]
+
+    train_res_huc2[metric] = train_scores
+    test_res_huc2[metric] = test_scores
+
+    train_scores = train_res_huc2.groupby("huc2_id").mean()
+    test_scores = test_res_huc2.groupby("huc2_id").mean()
+    test_res_huc2[metric] = simmed_scores
+    simmed_scores = test_res_huc2.groupby("huc2_id").mean()
+
+    train_scores = train_scores[metric]
+    test_scores = test_scores[metric]
+    simmed_scores = simmed_scores[metric]
+
+    max_score = max([train_scores.max(), test_scores.max(), simmed_scores.max()])
+    min_score = min([train_scores.min(), test_scores.min(), simmed_scores.min()])
+
+    score_range = max_score - min_score
+
+    norm = Normalize(
+        vmin=max([min_score - score_range * 0.05, 0]),
+        vmax=min([max_score + score_range * 0.05, 1]),
+    )
+    cmap = get_cmap("viridis")
+    other_bounds = []
+    for scores in [train_scores, test_scores, simmed_scores]:
+        temp_bounds = []
+        for wbd_id, score in scores.items():
+            wbd = wbd_map[int(wbd_id)]
+            color = cmap(norm(score))
+            temp_bounds.append((wbd, "k", color))
+        other_bounds.append(temp_bounds)
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+
+    fig = plt.figure()
+    # gs = mgridspec.GridSpec(
+    #     3, 2, figure=fig, width_ratios=[20, 1], height_ratios=[1, 1, 1]
+    # )
+    # train_ax = fig.add_subplot(gs[0, 0])
+    # test_ax = fig.add_subplot(gs[1, 0])
+    # simmed_ax = fig.add_subplot(gs[2, 0])
+    # cbar_ax = fig.add_subplot(gs[:, 1])
+    gs = mgridspec.GridSpec(2, 2, figure=fig, width_ratios=[1, 1], height_ratios=[1, 1])
+    train_ax = fig.add_subplot(gs[0, 0])
+    test_ax = fig.add_subplot(gs[0, 1])
+    simmed_ax = fig.add_subplot(gs[1, 0])
+    cbar_ax = fig.add_subplot(gs[1, 1])
+    axes = [train_ax, test_ax, simmed_ax]
+    maps = [
+        setup_map(
+            coords=[west, south, east, north],
+            other_bound=ob,
+            ax=ax,
+            # label_positions=lp,
+            return_ticks=True,
+        )
+        for ax, ob in zip(axes, other_bounds)
+    ]
+    for ax, title in zip(axes, ["Train", "Test", "Simmed"]):
+        ax.set_title(title)
+
+    mvals, pvals = maps[0][1:]
+    xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
+    yticks = []
+    for i in pvals.values():
+        try:
+            yticks.append(i[1][0].get_position()[1])
+        except IndexError:
+            pass
+
+    for ax in axes:
+        ax.set_xticks(xticks)
+        ax.set_yticks(yticks)
+        ax.tick_params(
+            axis="both",
+            direction="in",
+            left=True,
+            right=True,
+            top=True,
+            bottom=True,
+            labelleft=False,
+            labelright=False,
+            labeltop=False,
+            labelbottom=False,
+            zorder=10,
+        )
+
+    plt.colorbar(
+        ScalarMappable(norm=norm, cmap=cmap),
+        cax=cbar_ax,
+        orientation="horizontal",
+        label=f"Basin Average {metric}",
+        aspect=100,
+        shrink=0.8,
+        fraction=0.05,
+    )
+    # fig.suptitle(f"{data_set.title()}ing Reservoirs")
+    plt.subplots_adjust(
+        top=0.96, bottom=0.068, left=0.02, right=0.98, hspace=0.15, wspace=0.066
+    )
+    plt.show()
+    # if monthly:
+    #     file_name = f"{data_set}_{metric}_monthly.png"
+    # else:
+    #     file_name = f"{data_set}_{metric}.png"
+
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         f"~/Dropbox/plrt-conus-figures/basin_performance/{file_name}"
+    #     )
+    # )
+
+
+def plot_leave_out_performance_comparisons(model_path, axes=None):
+    pattern = re.compile(r"meta_(.*)_-?\d.\d+")
+    search_result = re.search(pattern, model_path)
+    if not search_result:
+        raise ValueError("Model path does not have a meta variable")
+    meta_var = search_result.group(1)
+    models_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
+    model_paths = glob.glob(f"{models_dir.as_posix()}/*{meta_var}*")
+
+    lower_20, upper_20 = "", ""
+    for model_path in model_paths:
+        if model_path[-4:] == "-0.2":
+            lower_20 = model_path
+        elif model_path[-3:] == "0.8":
+            upper_20 = model_path
+
+    lower_20 = load_model_results(lower_20)
+    upper_20 = load_model_results(upper_20)
+
+    lower_20_train = lower_20["train_data"]
+    lower_20_test = lower_20["test_data"]
+    upper_20_train = upper_20["train_data"]
+    upper_20_test = upper_20["test_data"]
+
+    lower_20_resers = lower_20_test.index.get_level_values(0).unique()
+    upper_20_resers = upper_20_test.index.get_level_values(0).unique()
+
+    # select reservoirs from each training set that correspond to the
+    # testing reservoirs in the other set
+    lower_20_train = lower_20_train.loc[pd.IndexSlice[upper_20_resers, :], :]
+    upper_20_train = upper_20_train.loc[pd.IndexSlice[lower_20_resers, :], :]
+
+    lower_20_train_scores = get_nnse(lower_20_train, "actual", "model", "res_id")
+    lower_20_test_scores = get_nnse(lower_20_test, "actual", "model", "res_id")
+    upper_20_train_scores = get_nnse(upper_20_train, "actual", "model", "res_id")
+    upper_20_test_scores = get_nnse(upper_20_test, "actual", "model", "res_id")
+
+    upper_20_comp = pd.DataFrame.from_dict(
+        {"Included": lower_20_train_scores, "Excluded": upper_20_test_scores}
+    )
+    lower_20_comp = pd.DataFrame.from_dict(
+        {"Included": upper_20_train_scores, "Excluded": lower_20_test_scores}
+    )
+
+    show = False
+    if axes is None:
+        fig, axes = plt.subplots(1, 2, sharex=True, sharey=True)
+        axes = axes.flatten()
+        show = True
+
+    pretty_var = get_pretty_var_name(meta_var)
+    titles = [f"Upper 20% {pretty_var}", f"Lower 20% {pretty_var}"]
+    for ax, df, title in zip(axes, [upper_20_comp, lower_20_comp], titles):
+        ax.scatter(df["Included"], df["Excluded"])
+        ax.set_xlabel("NNSE (Trained)")
+        ax.set_ylabel("NNSE (Excluded)")
+        ax.set_title(title)
+        ax.set_xlim((-0.05, 1.05))
+        ax.set_ylim((-0.05, 1.05))
+        mxbline(m=1, b=0, ax=ax, color="k", ls="--", lw=1)
+
+    if show:
+        plt.show()
+
+
+def plot_all_leave_out_performance_comparisons():
+    model_paths = [
+        "TD4_MSS0.09_SM_meta_rts_0.8",
+        "TD4_MSS0.09_SM_meta_max_sto_0.8",
+        "TD4_MSS0.09_SM_meta_rel_inf_corr_0.8",
+    ]
+
+    fig, axes = plt.subplots(3, 2)
+
+    for model_path, ax_row in zip(model_paths, axes):
+        plot_leave_out_performance_comparisons(model_path, ax_row)
+
+    plt.show()
+
+
 if __name__ == "__main__":
     sns.set_theme(context="notebook", palette="Set2", font_scale=1.1)
     args, remaining = parse_args()
@@ -1119,4 +1348,7 @@ if __name__ == "__main__":
     #     monthly_group=False,
     #     plot_pairs=False
     # )
-    plot_basin_mean_performance(model_results, **func_args)
+    # plot_basin_mean_performance(model_results, **func_args)
+    # plot_basin_mean_performance_dset_tile(model_results, **func_args)
+    # plot_leave_out_performance_comparisons(model_path)
+    plot_all_leave_out_performance_comparisons()
