@@ -82,3 +82,6 @@ results/**/*.bad/*
 # specific large files
 aggregated_results/partition_scores.pickle
 aggregated_results/best_partitions_3.pickle
+
+# random files
+python_scripts/model_runner.txt
