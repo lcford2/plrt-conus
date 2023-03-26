@@ -420,8 +420,7 @@ def pipeline(args):
             lower_bounds,
             upper_bounds,
             args.assim,
-            pd.Series(preds, index=X_test.index),
-            args.verbose,
+            args.parallel_verbosity,
             parallel=args.parallel,
         )
         simuled = simuled[["release", "storage"]].dropna()
@@ -445,7 +444,7 @@ def pipeline(args):
             lower_bounds,
             upper_bounds,
             args.assim,
-            args.verbose,
+            args.parallel_verbosity,
             parallel=args.parallel,
         )
         simuled = simuled[["release", "storage"]].dropna()
@@ -485,7 +484,7 @@ def pipeline(args):
         std.loc[test_locator, "release"],
     )
 
-    y_test_sim = y_test_act.loc[simmed.index]
+    y_test_sim = df.loc[simmed.index, "release"]
 
     f_act_score = r2_score(y_train_act, fitted_act)
     f_act_rmse = np.sqrt(mean_squared_error(y_train_act, fitted_act))
