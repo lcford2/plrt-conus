@@ -16,10 +16,10 @@ import pandas as pd
 from IPython import embed as II
 from make_resopsus_meta_data import make_meta_data
 from make_resopsus_model_ready import get_max_res_date_spans, trim_data_to_span
-from plrt import PieceWiseLinearRegressionTree
+from plrt import PieceWiseLinearRegressionTree, load_model
 from sklearn.metrics import mean_squared_error, r2_score
 from utils.config import config
-from utils.io import load_feather
+from utils.io import load_feather, load_pickle, write_pickle
 from utils.metrics import get_nnse
 from utils.timing_function import time_function
 from utils.utils import my_groupby
@@ -226,6 +226,8 @@ def unstandardize(series, mean, std):
 
 
 def pipeline(args):
+    model_set, foldername = make_output_paths(args)
+    folderpath = config.get_dir("results") / model_set / foldername
     start_time = timer()
     # month_intercepts = args.month_ints
     max_depth = args.max_depth
@@ -284,14 +286,19 @@ def pipeline(args):
 
     np.random.seed(44)
     splitting_method = args.splitting_method
-    if splitting_method[0] == "basin":
-        basin_train, basin_test = split_train_test_by_basin(
-            reservoirs, float(splitting_method[-1])
-        )
+    cache_file = f"./model_setup_files/test_train_{'_'.join(splitting_method)}.pickle"
+    if os.path.exists(cache_file):
+        basin_train, basin_test = load_pickle(cache_file)
     else:
-        basin_train, basin_test = split_train_test_by_basin_meta_var(
-            reservoirs, meta, splitting_method[1], float(splitting_method[-1])
-        )
+        if splitting_method[0] == "basin":
+            basin_train, basin_test = split_train_test_by_basin(
+                reservoirs, float(splitting_method[-1])
+            )
+        else:
+            basin_train, basin_test = split_train_test_by_basin_meta_var(
+                reservoirs, meta, splitting_method[1], float(splitting_method[-1])
+            )
+        write_pickle((basin_train, basin_test), cache_file)
 
     train_res, test_res = [], []
     for resers in basin_train.values():
@@ -337,6 +344,16 @@ def pipeline(args):
 
     X_vars_tree = [*X_vars, *add_tree_vars]
 
+    if args.sim_all:
+        X_simul = df.loc[:, X_vars].sort_index()
+        for tree_var in add_tree_vars:
+            values = []
+            for res, _ in X_simul.index:
+                values.append(meta.loc[res, tree_var])
+            X_simul[tree_var] = values
+    else:
+        X_simul = X_test_act
+
     X_vars_tree.remove("const")
 
     min_samples_split = args.mss
@@ -350,23 +367,26 @@ def pipeline(args):
 
     if max_depth > 0:
         make_dot = True
-        model = PieceWiseLinearRegressionTree(
-            X_train,
-            y_train,
-            max_depth=max_depth,
-            # feature_names=feat_names,
-            response_name="release",
-            tree_vars=X_vars_tree,
-            reg_vars=X_vars,
-            njobs=njobs,
-            method=args.method,
-            n_disc_steps=1000,
-            min_samples_split=min_samples_split,
-        )
+        if args.load_model:
+            model = load_model((folderpath / "model.pickle").as_posix())
+        else:
+            model = PieceWiseLinearRegressionTree(
+                X_train,
+                y_train,
+                max_depth=max_depth,
+                # feature_names=feat_names,
+                response_name="release",
+                tree_vars=X_vars_tree,
+                reg_vars=X_vars,
+                njobs=njobs,
+                method=args.method,
+                n_disc_steps=1000,
+                min_samples_split=min_samples_split,
+            )
 
-        log("Fitting model", start_time)
+            log("Fitting model", start_time)
 
-        time_function(model.fit)()
+            time_function(model.fit)()
 
         params, groups = get_params_and_groups(X_train, model)
         # get the unique final leaves
@@ -391,7 +411,8 @@ def pipeline(args):
         simuled = simulate_plrt_model(
             model,
             "model",
-            X_test_act,
+            # X_test_act,
+            X_simul,
             means,
             std,
             X_vars_tree,
@@ -415,7 +436,8 @@ def pipeline(args):
         simuled = simulate_plrt_model(
             beta,
             "beta",
-            X_test_act,
+            # X_test_act,
+            X_simul,
             means,
             std,
             X_vars,
@@ -583,16 +605,6 @@ def pipeline(args):
     )
 
     # setup output parameters
-    model_set = f"merged_data_set_minyr{args.min_years}"
-    if args.monthly:
-        model_set = f"monthly_{model_set}"
-    assim_mod = f"_{args.assim}" if args.assim else ""
-    mss_mod = f"_MSS{min_samples_split:0.2f}"
-    sm_mod = f"_SM_{'_'.join(splitting_method)}"
-    foldername = f"TD{max_depth}{assim_mod}{mss_mod}{sm_mod}"
-    folderpath = config.get_dir("results") / model_set / foldername
-    # folderpath = pathlib.Path("..", "results", model_set, foldername)
-
     # check if the directory exists and handle it
     if folderpath.is_dir():
         # response = input(
@@ -641,6 +653,18 @@ def pipeline(args):
     # write the random effects to a csv file for easy access
     coefs.to_csv((folderpath / "random_effects.csv").as_posix())
     log("Done", start_time)
+
+
+def make_output_paths(args):
+    model_set = f"merged_data_set_minyr{args.min_years}"
+    if args.monthly:
+        model_set = f"monthly_{model_set}"
+    assim_mod = f"_{args.assim}" if args.assim else ""
+    mss_mod = f"_MSS{args.mss:0.2f}"
+    sm_mod = f"_SM_{'_'.join(args.splitting_method)}"
+    from_store_mod = "_FROM_STORED" if args.load_model else ""
+    foldername = f"TD{args.max_depth}{assim_mod}{mss_mod}{sm_mod}{from_store_mod}"
+    return model_set, foldername
 
 
 def simulate_plrt_model(
@@ -992,6 +1016,18 @@ def parse_args(arg_list=None):
         help="How should the training and the testing split be split? "
         + "If len = 2, should be 'basin' 'proportion'. "
         + "If len = 3, should be 'meta' 'meta var' 'threshold'",
+    )
+    parser.add_argument(
+        "--sim-all",
+        action="store_true",
+        default=False,
+        help="Simulate all records, not just testing records",
+    )
+    parser.add_argument(
+        "--load-model",
+        action="store_true",
+        default=False,
+        help="Load stored model, rather than fitting new one",
     )
     if arg_list:
         return parser.parse_args(arg_list)
