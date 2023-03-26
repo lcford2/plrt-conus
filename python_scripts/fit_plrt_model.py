@@ -421,7 +421,7 @@ def pipeline(args):
             upper_bounds,
             args.assim,
             pd.Series(preds, index=X_test.index),
-            X_test,
+            args.verbose,
             parallel=args.parallel,
         )
         simuled = simuled[["release", "storage"]].dropna()
@@ -445,8 +445,7 @@ def pipeline(args):
             lower_bounds,
             upper_bounds,
             args.assim,
-            pd.Series(preds, index=X_test.index),
-            X_test,
+            args.verbose,
             parallel=args.parallel,
         )
         simuled = simuled[["release", "storage"]].dropna()
@@ -678,8 +677,7 @@ def simulate_plrt_model(
     lower_bounds,
     upper_bounds,
     assim,
-    preds,
-    X_test,
+    verbosity,
     parallel=True,
 ):
     # I need to keep track of actual storage and release outputs
@@ -728,7 +726,7 @@ def simulate_plrt_model(
     from joblib import Parallel, delayed
 
     if parallel:
-        outputdfs = Parallel(n_jobs=-1, verbose=11)(
+        outputdfs = Parallel(n_jobs=-1, verbose=verbosity)(
             delayed(simul_reservoir)(
                 res,
                 model,
@@ -1028,6 +1026,13 @@ def parse_args(arg_list=None):
         action="store_true",
         default=False,
         help="Load stored model, rather than fitting new one",
+    )
+    parser.add_argument(
+        "-pv",
+        "--parallel-verbosity",
+        default=10,
+        type=int,
+        help="Verbosity level for `joblib` Parallel()",
     )
     if arg_list:
         return parser.parse_args(arg_list)
