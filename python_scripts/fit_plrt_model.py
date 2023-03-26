@@ -325,22 +325,12 @@ def pipeline(args):
     add_tree_vars = ["rts", "max_sto"]
 
     for tree_var in add_tree_vars:
-        # train_values = [
-        #     meta.loc[i, tree_var] for i in X_train.index.get_level_values(0)
-        # ]
-        # test_values = [
-        #     meta.loc[i, tree_var] for i in X_test.index.get_level_values(0)
-        # ]
         train_values = []
-        for res in train_res:
-            train_values.extend(
-                [meta.loc[res, tree_var]] * X_train.loc[pd.IndexSlice[res, :]].shape[0]
-            )
+        for res, _ in X_train.index:
+            train_values.append(meta.loc[res, tree_var])
         test_values = []
-        for res in test_res:
-            test_values.extend(
-                [meta.loc[res, tree_var]] * X_test.loc[pd.IndexSlice[res, :]].shape[0]
-            )
+        for res, _ in X_test.index:
+            test_values.append(meta.loc[res, tree_var])
         X_train[tree_var] = train_values
         X_test[tree_var] = test_values
         X_test_act[tree_var] = test_values
