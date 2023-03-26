@@ -1,0 +1,4 @@
+-d 4 --mss 0.09 -m --min-years 3 -S meta max_sto -0.2
+-d 4 --mss 0.09 -m --min-years 3 -S meta max_sto 0.8
+-d 4 --mss 0.09 -m --min-years 3 -S meta rel_inf_corr -0.2
+-d 4 --mss 0.09 -m --min-years 3 -S meta rel_inf_corr 0.8
