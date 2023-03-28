@@ -1,0 +1,69 @@
+digraph tree {
+bgcolor="transparent"
+node [shape=rectangle, style="filled, rounded", color="black", fontname=helvetica] ;
+edge [fontname=helvetica] ;
+	"0" [label="mse = 0.180
+samples = 100.0%
+max_sto &le; 185505416.716", fillcolor="#eb9f68"]
+	"1" [label="mse = 0.153
+samples = 37.9%
+rts &le; 189.091", fillcolor="#f3c5a4"]
+	"2" [label="mse = 0.157
+samples = 25.8%
+               const: -0.000
+         storage_pre:  0.040
+         release_pre:  0.819
+              inflow:  0.155
+            sto_diff:  0.133
+       release_roll7:  0.105
+        inflow_roll7: -0.117
+    storage_x_inflow:  0.059
+             inflow2:  0.056
+        release_pre2: -0.089", fillcolor="#f1bf9a"]
+	"3" [label="mse = 0.127
+samples = 12.1%
+               const:  0.000
+         storage_pre:  0.007
+         release_pre:  0.999
+              inflow: -0.002
+            sto_diff:  0.063
+       release_roll7:  0.004
+        inflow_roll7: -0.029
+    storage_x_inflow:  0.051
+             inflow2:  0.040
+        release_pre2: -0.091", fillcolor="#fae9dd"]
+	"4" [label="mse = 0.191
+samples = 62.1%
+rts &le; 34.642", fillcolor="#e89050"]
+	"5" [label="mse = 0.112
+samples = 11.1%
+               const:  0.000
+         storage_pre:  0.074
+         release_pre:  0.655
+              inflow:  0.247
+            sto_diff:  0.108
+       release_roll7:  0.096
+        inflow_roll7: -0.062
+    storage_x_inflow:  0.041
+             inflow2: -0.020
+        release_pre2:  0.019", fillcolor="#ffffff"]
+	"6" [label="mse = 0.202
+samples = 51.0%
+               const: -0.000
+         storage_pre:  0.043
+         release_pre:  0.665
+              inflow:  0.007
+            sto_diff:  0.414
+       release_roll7:  0.178
+        inflow_roll7:  0.004
+    storage_x_inflow:  0.005
+             inflow2:  0.004
+        release_pre2:  0.063", fillcolor="#e58139"]
+
+	"0" -> "1" [labeldistance=2.5, labelangle=45, headlabel="True"]
+	"1" -> "2"
+	"1" -> "3"
+	"0" -> "4" [labeldistance=2.5, labelangle=-45, headlabel="False"]
+	"4" -> "5"
+	"4" -> "6"
+}

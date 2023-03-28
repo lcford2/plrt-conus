@@ -1,0 +1,35 @@
+digraph tree {
+bgcolor="transparent"
+node [shape=rectangle, style="filled, rounded", color="black", fontname=helvetica] ;
+edge [fontname=helvetica] ;
+	"0" [label="mse = 0.180
+samples = 100.0%
+max_sto &le; 185505416.716", fillcolor="#eca470"]
+	"1" [label="mse = 0.153
+samples = 37.9%
+               const: -0.000
+         storage_pre:  0.027
+         release_pre:  0.887
+              inflow:  0.088
+            sto_diff:  0.141
+       release_roll7:  0.079
+        inflow_roll7: -0.092
+    storage_x_inflow:  0.054
+             inflow2:  0.062
+        release_pre2: -0.093", fillcolor="#ffffff"]
+	"2" [label="mse = 0.191
+samples = 62.1%
+               const: -0.000
+         storage_pre:  0.048
+         release_pre:  0.682
+              inflow:  0.036
+            sto_diff:  0.236
+       release_roll7:  0.156
+        inflow_roll7:  0.006
+    storage_x_inflow: -0.002
+             inflow2:  0.013
+        release_pre2:  0.051", fillcolor="#e58139"]
+
+	"0" -> "1" [labeldistance=2.5, labelangle=45, headlabel="True"]
+	"0" -> "2" [labeldistance=2.5, labelangle=-45, headlabel="False"]
+}

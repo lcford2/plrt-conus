@@ -1,0 +1,69 @@
+digraph tree {
+bgcolor="transparent"
+node [shape=rectangle, style="filled, rounded", color="black", fontname=helvetica] ;
+edge [fontname=helvetica] ;
+	"0" [label="mse = 0.180
+samples = 100.0%
+max_sto &le; 185505416.716", fillcolor="#e89051"]
+	"1" [label="mse = 0.153
+samples = 37.9%
+max_sto &le; 8339264.432", fillcolor="#eeae7f"]
+	"2" [label="mse = 0.078
+samples = 3.2%
+               const: -0.000
+         storage_pre:  0.033
+         release_pre:  0.454
+              inflow:  0.352
+            sto_diff:  0.102
+       release_roll7:  0.287
+        inflow_roll7: -0.204
+    storage_x_inflow:  0.038
+             inflow2:  0.237
+        release_pre2: -0.150", fillcolor="#ffffff"]
+	"3" [label="mse = 0.154
+samples = 34.8%
+               const:  0.000
+         storage_pre:  0.027
+         release_pre:  0.909
+              inflow:  0.077
+            sto_diff:  0.164
+       release_roll7:  0.066
+        inflow_roll7: -0.085
+    storage_x_inflow:  0.053
+             inflow2:  0.055
+        release_pre2: -0.096", fillcolor="#eead7e"]
+	"4" [label="mse = 0.191
+samples = 62.1%
+rts &le; 23.848", fillcolor="#e5843f"]
+	"5" [label="mse = 0.099
+samples = 7.8%
+               const:  0.000
+         storage_pre:  0.069
+         release_pre:  0.406
+              inflow:  0.529
+            sto_diff:  0.090
+       release_roll7:  0.142
+        inflow_roll7: -0.104
+    storage_x_inflow:  0.003
+             inflow2: -0.060
+        release_pre2:  0.070", fillcolor="#fae8db"]
+	"6" [label="mse = 0.194
+samples = 54.2%
+               const: -0.000
+         storage_pre:  0.045
+         release_pre:  0.679
+              inflow:  0.015
+            sto_diff:  0.399
+       release_roll7:  0.172
+        inflow_roll7:  0.004
+    storage_x_inflow: -0.000
+             inflow2:  0.004
+        release_pre2:  0.056", fillcolor="#e58139"]
+
+	"0" -> "1" [labeldistance=2.5, labelangle=45, headlabel="True"]
+	"1" -> "2"
+	"1" -> "3"
+	"0" -> "4" [labeldistance=2.5, labelangle=-45, headlabel="False"]
+	"4" -> "5"
+	"4" -> "6"
+}
