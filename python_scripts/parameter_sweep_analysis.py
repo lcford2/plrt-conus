@@ -164,13 +164,20 @@ def metric_wide_to_long(
         )
     else:
         df = metric_df.melt(var_name="model", value_name=metric)
-    df[["TD", "MSS"]] = df["model"].str.split("_", expand=True)
+
+    params = df["model"].str.split("_", expand=True)
+    if params.shape[1] == 5:
+        names = ["TD", "MSS", "Splitting Method", "Threshold"]
+    else:
+        names = ["TD", "MSS", "Splitting Method", "Spltting Var", "Threshold"]
+
+    df[names] = params.drop(2, axis=1).values
     df["TD"] = df["TD"].str.slice(2)
     df["MSS"] = df["MSS"].str.slice(3)
     return df.drop("model", axis=1)
 
 
-def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str) -> None:
+def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str, resers=None) -> None:
     """Box plot where X is tree depth, y is the metric, boxes are colored by
         MSS, and whiskers are set to 10% and 90%
 
@@ -178,6 +185,8 @@ def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str) -> None:
         metric_df (pd.DataFrame): Metric dataframe to plot
         metric (str): Name of metric to plot
     """
+    if resers is not None:
+        metric_df = metric_df.loc[resers]
     df = metric_wide_to_long(metric_df, metric)
     fg = sns.catplot(
         data=df,
@@ -326,7 +335,11 @@ def compare_training_testing_data(results: dict, min_years: int) -> None:
 
 
 def setup_map(
-    ax=None, coords=None, other_bound=None, label_positions=None, return_ticks=False
+    ax=None,
+    coords=None,
+    other_bound=None,
+    label_positions=None,
+    return_ticks=False,
 ) -> Basemap:
     """Generate a map with many common elements
 
@@ -388,7 +401,11 @@ def setup_map(
         zorder=-1,
     )
     mvals = m.drawmeridians(
-        meridians, linewidth=1.0, dashes=[1, 0], labels=label_positions, zorder=-1
+        meridians,
+        linewidth=1.0,
+        dashes=[1, 0],
+        labels=label_positions,
+        zorder=-1,
     )
     xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
     yticks = []
@@ -757,8 +774,14 @@ if __name__ == "__main__":
     # translate_tree_splitting_values(model_dir / model)
     results = load_model_results_from_list(model_dir.iterdir())
     simmed_data = get_data_from_results(results, dataset="simmed")
+    basin_train, basin_test = load_pickle(
+        "./model_setup_files/test_train_basin_0.8.pickle"
+    )
+    test_resers = []
+    for resers in basin_test.values():
+        test_resers.extend(resers)
     metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
-    # plot_metric_box_plot(metrics["nnse"], "NNSE")
+    plot_metric_box_plot(metrics["nnse"], "NNSE", resers=test_resers)
 
     # make_parameter_sweep_comparison(metrics, "nnse")
 
@@ -769,6 +792,6 @@ if __name__ == "__main__":
     # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)
 
-    plot_monthly_vs_longterm_mean_models()
+    # plot_monthly_vs_longterm_mean_models()
 
     # correlate_res_metrics(metrics, "nnse")
