@@ -14,7 +14,7 @@ from utils.config import config
 from utils.io import load_feather, load_model, load_pickle, load_results, write_pickle
 from utils.plot_tools import get_pretty_var_name, mxbline
 
-PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
+PSWEEP_RESULTS_DIR = config.get_dir("results") / "monthly_merged_data_set_minyr3"
 GIS_DIR = config.get_dir("general_data") / "GIS"
 
 
@@ -125,7 +125,7 @@ def calculate_metrics(
 
     file_name = "_".join(file_name_list)
     metrics_file = (
-        config.get_dir("agg_results") / "parameter_sweep" / f"{file_name}.pickle"
+        config.get_dir("agg_results") / "new_parameter_sweep" / f"{file_name}.pickle"
     )
     if not recalc and metrics_file.exists():
         return load_pickle(metrics_file.as_posix())
@@ -874,6 +874,7 @@ if __name__ == "__main__":
         test_resers.extend(resers)
 
     # translate_tree_splitting_values(model_dir / model)
+    # plot_metric_box_plot(metrics["nnse"], "NNSE")
     # * If you want to get all results from each model
     # results = load_model_results_from_list(model_dir.iterdir())
     # simmed_data = get_data_from_results(results, dataset="simmed")
