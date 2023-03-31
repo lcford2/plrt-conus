@@ -9,9 +9,9 @@ import seaborn as sns
 import utils.metrics as metric_funcs
 from fit_plrt_model import load_resopsus_data
 from mpl_toolkits.basemap import Basemap
-from plrt import load_model
+from plrt import PieceWiseLinearRegressionTree
 from utils.config import config
-from utils.io import load_feather, load_pickle, load_results, write_pickle
+from utils.io import load_feather, load_model, load_pickle, load_results, write_pickle
 from utils.plot_tools import get_pretty_var_name, mxbline
 
 PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
@@ -41,6 +41,16 @@ def load_model_results(model_dir: str | pathlib.Path) -> dict:
         model_dir = pathlib.Path(model_dir)
 
     return load_results(model_dir.as_posix())
+
+
+def load_model_file(
+    model_dir: str | pathlib.Path,
+) -> PieceWiseLinearRegressionTree:
+    """Load PLRT Model"""
+    if isinstance(model_dir, str):
+        model_dir = pathlib.Path(model_dir)
+
+    return load_model(model_dir.as_posix())
 
 
 def load_model_results_from_list(model_dirs: list) -> dict:
