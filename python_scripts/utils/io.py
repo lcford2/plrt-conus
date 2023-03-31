@@ -3,6 +3,7 @@ import pickle
 from typing import Any
 
 import pandas as pd
+from plrt import PieceWiseLinearRegressionTree
 from utils.config import config
 
 
@@ -69,6 +70,19 @@ def load_results(path: str | pathlib.Path) -> dict:
         dict: Results dictionary from model
     """
     return load_pickle((pathlib.Path(path) / "results.pickle").as_posix())
+
+
+def load_model(path: str | pathlib.Path) -> PieceWiseLinearRegressionTree:
+    """Load `model.pickle` file from the model path
+
+    Args:
+        path (str | pathlib.Path): Path to the model directory that contains
+            model.pickle
+
+    Returns:
+        PiecewiseLinearRegressionTree: PLRT Model
+    """
+    return load_pickle((pathlib.Path(path) / "model.pickle").as_posix())
 
 
 def load_huc2_name_map() -> dict:

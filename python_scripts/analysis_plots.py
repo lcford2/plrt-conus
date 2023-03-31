@@ -1,15 +1,17 @@
 import calendar
 import os
+import re
 from collections import defaultdict
 from multiprocessing import cpu_count
 
 import geopandas as gpd
+import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 from fit_plrt_model import get_params_and_groups
 from matplotlib.cm import get_cmap
-from matplotlib.colors import Normalize
+from matplotlib.colors import ListedColormap, Normalize
 from parameter_sweep_analysis import (
     get_contiguous_wbds,
     load_model_file,
@@ -17,7 +19,7 @@ from parameter_sweep_analysis import (
     setup_map,
 )
 from utils.config import config
-from utils.io import load_feather, load_pickle, write_pickle
+from utils.io import load_feather, load_pickle, write_feather, write_pickle
 from utils.plot_tools import determine_grid_size
 from utils.utils import format_equation
 
@@ -41,6 +43,7 @@ OP_GROUPS = {
     "Large 3": [11, 12, 13, 14, 16, 17],
     "Very Large": [11, 12, 13, 15, 16, 17],
 }
+
 OP_GROUP_FINAL_KEYS = [
     "Very Small",
     "Small, Low RT",
@@ -49,8 +52,28 @@ OP_GROUP_FINAL_KEYS = [
     "Medium, Low RT",
     "Medium, Mid RT",
     "Medium, High RT",
-    "Medium-Large",
     "Large, Low RT",
+    "Large",
+    "Very Large",
+]
+
+OP_GROUP_PLOT_INFO = {
+    "Very Small": {"marker": "o"},
+    "Small, Low RT": {"marker": "o"},
+    "Small, Mid RT": {"marker": "v"},
+    "Small, High RT": {"marker": "o"},
+    "Medium, Low RT": {"marker": "o"},
+    "Medium, Mid RT": {"marker": "v"},
+    "Medium, High RT": {"marker": "v"},
+    "Large, Low RT": {"marker": "o"},
+    "Large": {"marker": "v"},
+    "Very Large": {"marker": "v"},
+}
+
+TIME_VARYING_GROUPS = [
+    "Small, Mid RT",
+    "Medium, Mid RT",
+    "Medium, High RT",
     "Large",
     "Very Large",
 ]
@@ -88,9 +111,19 @@ def find_operational_groups_for_res(model, model_data):
             resp = input("Enter operational group: ")
             resp_group = group_names[int(resp) - 1]
             res_op_groups[resp_group].append(res)
+    res_op_groups["Medium, High RT"].extend(res_op_groups["Medium-Large"])
+    res_op_groups.pop("Medium-Large")
     write_pickle(
         res_op_groups,
         config.get_dir("agg_results") / "best_model_op_groups.pickle",
+    )
+    records = []
+    for group, resers in res_op_groups.items():
+        records.extend([(group, r) for r in resers])
+
+    records = pd.DataFrame.from_records(records, columns=["op_group", "res_id"])
+    write_feather(
+        records, config.get_dir("agg_results") / "best_model_op_groups.feather"
     )
 
 
@@ -128,8 +161,10 @@ def plot_operational_group_map(model_results):
     m = setup_map(coords=(west, south, east, north), other_bound=other_bounds)
 
     grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+
     for group in groups:
         resers = res_op_groups[group]
+        marker = OP_GROUP_PLOT_INFO[group]["marker"]
         res_coords = [
             (row.LONG_DD, row.LAT_DD)
             for _, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
@@ -139,7 +174,7 @@ def plot_operational_group_map(model_results):
             res_x,
             res_y,
             latlon=True,
-            marker="v",
+            marker=marker,
             color=group_colors[group],
             label=group,
             zorder=4,
@@ -215,7 +250,7 @@ def get_basin_op_mode_breakdown():
     II()
 
 
-def plot_basin_specific_seasonal_operations(model, model_data, op_group):
+def get_res_seasonal_operations(model, model_data, op_group):
     _, train_groups = get_params_and_groups(model_data["train"], model)
     _, test_groups = get_params_and_groups(model_data["test"], model)
     # get the unique final leaves
@@ -247,7 +282,12 @@ def plot_basin_specific_seasonal_operations(model, model_data, op_group):
     counts = counts.fillna(0.0)
     props = counts.divide(counts.sum(axis=1), axis=0)
     props = props.stack().reset_index().rename(columns={"level_2": "group", 0: "prop"})
+    return props
 
+
+def plot_basin_specific_seasonal_operations(model, model_data, op_group):
+    props = get_res_seasonal_operations(model, model_data, op_group)
+    resers = props["res_id"].unique()
     res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
     res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
     res_huc2 = res_huc2.set_index("res_id")
@@ -285,6 +325,163 @@ def plot_basin_specific_seasonal_operations(model, model_data, op_group):
             ax.legend(loc="lower left", ncol=2, prop={"size": 12})
             legend = False
     fig.suptitle(f"Op. Group: {op_group}")
+
+    left_over = len(axes.flatten()) - nbasins
+    if left_over > 0:
+        for ax in axes.flatten()[-left_over:]:
+            ax.axis("off")
+    plt.show()
+
+
+def plot_reservoir_most_likely_group_maps(model, model_data, op_group):
+    props = get_res_seasonal_operations(model, model_data, op_group)
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    resers = props["res_id"].unique()
+    groups = props["group"].unique()
+
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
+    res_huc2 = res_huc2.set_index("res_id")
+    res_huc2 = res_huc2.loc[resers]
+
+    most_likely_groups = []
+    for res in resers:
+        rdf = props[props["res_id"] == res]
+        rdf = rdf.pivot(index="group", columns="date", values="prop")
+        rdf = rdf.fillna(0.0)
+        most_likely_groups.append([res, *rdf.idxmax(axis=0).values])
+
+    most_likely_groups = pd.DataFrame.from_records(
+        most_likely_groups, columns=["res", *range(1, 13)]
+    )
+    most_likely_groups = most_likely_groups.set_index("res")
+    most_likely_groups["basin"] = res_huc2
+
+    most_likely_basin_groups = []
+    for basin in most_likely_groups["basin"].unique():
+        bdf = most_likely_groups[most_likely_groups["basin"] == basin]
+        mode = bdf.mode(axis=0)
+        most_likely_basin_groups.append([basin, *mode[range(1, 13)].values[0]])
+
+    most_likely_basin_groups = pd.DataFrame.from_records(
+        most_likely_basin_groups, columns=["basin", *range(1, 13)]
+    )
+
+    color_pal = sns.color_palette("Paired")
+    norm = Normalize(vmin=0, vmax=len(groups) - 1)
+    cmap = ListedColormap(color_pal.as_hex()[: len(groups)])
+    group_colors = {g: cmap(norm(i)) for i, g in enumerate(sorted(groups))}
+
+    most_likely_basin_groups = most_likely_basin_groups.set_index("basin")
+    basin_month_colors = {}
+
+    for basin in most_likely_basin_groups.index:
+        bgroups = most_likely_basin_groups.loc[basin]
+        basin_month_colors[basin] = [group_colors[int(i)] for i in bgroups.values]
+
+    other_bounds = []
+    for month in range(12):
+        temp_bounds = []
+        for basin in res_huc2["huc2_id"].unique():
+            bwbd = wbd_map[int(basin)]
+            color = basin_month_colors[basin][month]
+            temp_bounds.append((bwbd, "k", color))
+        other_bounds.append(temp_bounds)
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+
+    fig, axes = plt.subplots(3, 4, sharex=True, sharey=True)
+    axes = axes.flatten()
+
+    # l, r, t, b
+    label_positions = [
+        [1, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [1, 0, 0, 1],
+        [0, 0, 0, 1],
+        [0, 0, 0, 1],
+        [0, 0, 0, 1],
+    ]
+    maps = [
+        setup_map(
+            coords=[west, south, east, north],
+            other_bound=ob,
+            ax=ax,
+            label_positions=lp,
+            return_ticks=True,
+        )
+        for ax, lp, ob in zip(axes, label_positions, other_bounds)
+    ]
+
+    # res_coords = [
+    #     (row.LONG_DD, row.LAT_DD)
+    #     for i, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
+    # ]
+    # res_x, res_y = list(zip(*res_coords))
+
+    # for month, map_info in zip(range(1, 13), maps):
+    #     m = map_info[0]
+    #     m.scatter(
+    #         res_x,
+    #         res_y,
+    #         latlon=True,
+    #         marker="v",
+    #         color="k",
+    #         # label=group,
+    #         zorder=4,
+    #         sizes=[40],
+    #     )
+
+    for i, ax in enumerate(axes):
+        ax.set_title(calendar.month_name[i + 1])
+
+    mvals, pvals = maps[8][1:]
+    xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
+    yticks = []
+    for i in pvals.values():
+        try:
+            yticks.append(i[1][0].get_position()[1])
+        except IndexError:
+            pass
+
+    for ax in axes:
+        ax.set_xticks(xticks)
+        ax.set_yticks(yticks)
+        ax.tick_params(
+            axis="both",
+            direction="in",
+            left=True,
+            right=True,
+            top=True,
+            bottom=True,
+            labelleft=False,
+            labelright=False,
+            labeltop=False,
+            labelbottom=False,
+            zorder=10,
+        )
+    handles = [mpatch.Patch(edgecolor="k", facecolor=c) for c in group_colors.values()]
+    axes[0].legend(
+        handles,
+        [f"Group {i}" for i in group_colors.keys()],
+        loc="upper right",
+        prop={"size": 10},
+    )
+    fig.suptitle(f"Op. Group: {op_group}")
     plt.show()
 
 
@@ -302,37 +499,27 @@ if __name__ == "__main__":
     )
 
     model_results = load_model_results(full_model_path)
+    model = load_model_file(full_model_path)
+    model_data = load_pickle(full_model_path / "datasets.pickle")
 
     # * Find operational groups
-    # model = load_model_file(full_model_path)
-    # model_data = load_pickle(full_model_path / "datasets.pickle")
     # find_operational_groups_for_res(model, model_data)
 
     # * Plot operational groups on map
     # plot_operational_group_map(model_results)
 
     # * Get model equation coeff dataframe
-    model = load_model_file(full_model_path)
-    model_data = load_pickle(full_model_path / "datasets.pickle")
-    get_coefficient_dataframe(model, model_data)
+    # get_coefficient_dataframe(model, model_data)
 
     # * get breakdown of reservoirs per mode per basin
     # get_basin_op_mode_breakdown()
 
-    # * get seasonal operations for a specific mode
-    # model = load_model_file(full_model_path)
-    # model_data = load_pickle(full_model_path / "datasets.pickle")
-    # modes = [
-    #     "Small, Mid RT",
-    #     "Medium-Large",
-    #     "Medium, Mid RT",
-    #     "Medium, High RT",
-    #     "Large",
-    #     "Very Large",
-    # ]
+    # * get seasonal operations for a specific group
+    # plot_basin_specific_seasonal_operations(model, model_data, "Medium, High RT")
 
-    # for mode in modes[3:4]:
-    #     try:
-    #         plot_basin_specific_seasonal_operations(model, model_data, mode)
-    #     except Exception:
-    #         pass
+    # for mode in TIME_VARYING_GROUPS[:1]:
+    #    plot_basin_specific_seasonal_operations(model, model_data, mode)
+
+    # * Plot seasonal operation maps for a specific group
+    for op_group in TIME_VARYING_GROUPS:
+        plot_reservoir_most_likely_group_maps(model, model_data, op_group)

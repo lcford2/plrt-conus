@@ -9,7 +9,6 @@ from multiprocessing import cpu_count
 
 import geopandas as gpd
 import matplotlib.gridspec as mgridspec
-import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -32,16 +31,17 @@ plt.rcParams["svg.fonttype"] = "none"
 CPUS = cpu_count()
 os.environ["OMP_NUM_THREADS"] = str(CPUS)
 
-BASIN_GROUPS_ORIG = {
-    "Most Similar": [10, 11, 14, 16, 17, 18],
-    "Sort-of Similar": [3, 5, 6, 7, 8],
-    "Least Similar": [1, 2, 9, 12, 13, 15],
-}
-
-BASIN_GROUPS = {
-    "Most Similar": [10, 14, 16, 17, 18],
-    "Sort-of Similar": [3, 5, 6, 7, 11],
-    "Least Similar": [1, 2, 8, 9, 12, 13, 15],
+OP_GROUPS = {
+    "Very Small": [1],
+    "Small, Low RT": [2],
+    "Small, Mid RT": [3, 4, 5],
+    "Small, High RT": [6],
+    "Medium, Low RT": [7],
+    "Medium, Mid RT": [9, 13, 14, 16, 17],
+    "Medium, High RT": [10, 13, 14, 16, 17],
+    "Medium-Large": [13, 14, 16, 17],
+    "Large": [11, 12, 13, 14, 16, 17],
+    "Very Large": [11, 12, 13, 15, 16, 17],
 }
 
 
@@ -269,9 +269,9 @@ def plot_grouped_basin_map():
             j, i = line.split(",")
             basins[i] = int(j)
 
-    wbds = get_contiguous_wbds()
-    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
-    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+    # wbds = get_contiguous_wbds()
+    # wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    # wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
 
     # norm = Normalize(vmin=0, vmax=2)
     # cmap = get_cmap("plasma_r")
@@ -281,20 +281,20 @@ def plot_grouped_basin_map():
 
     # best_part = filtered_parts[0][0]
 
-    color_pal = sns.color_palette("Set2")
-    color_dict = {
-        tuple(item): color_pal[i]
-        for i, (k, item) in enumerate(BASIN_GROUPS.items())
-        # for i, item in enumerate(best_part)
-    }
+    # color_pal = sns.color_palette("Set2")
+    # color_dict = {
+    #     tuple(item): color_pal[i]
+    #     for i, (k, item) in enumerate(BASIN_GROUPS.items())
+    #     # for i, item in enumerate(best_part)
+    # }
 
-    color_vars = {}
-    for wbd_id in wbd_ids:
-        for gbasins, color in color_dict.items():
-            if int(wbd_id) in gbasins:
-                color_vars[int(wbd_id)] = color
+    # color_vars = {}
+    # for wbd_id in wbd_ids:
+    #     for gbasins, color in color_dict.items():
+    #         if int(wbd_id) in gbasins:
+    #             color_vars[int(wbd_id)] = color
 
-    other_bounds = [(wbd_map[i], "k", color_vars[i]) for i in color_vars.keys()]
+    # other_bounds = [(wbd_map[i], "k", color_vars[i]) for i in color_vars.keys()]
 
     west, south, east, north = (
         -127.441406,
@@ -302,18 +302,19 @@ def plot_grouped_basin_map():
         -66.093750,
         53.382373,
     )
-    setup_map(coords=[west, south, east, north], other_bound=other_bounds)
+    # setup_map(coords=[west, south, east, north], other_bound=other_bounds)
+    setup_map(coords=[west, south, east, north])
     # wbd_gdfs = [gpd.read_file(i+".shp") for i in wbds]
     # for wbd_id, wbd_gdf in zip(wbd_ids, wbd_gdfs):
     #     centroid = wbd_gdf.centroid[0]
     #     x, y = centroid.x, centroid.y
     #     print(x, y)
     #     ax.text(x, y, wbd_id)
-    handles = [mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)]
+    # handles = [mpatch.Patch(edgecolor="k", facecolor=color_pal[i]) for i in range(3)]
     # labels = [str(i) for i in best_part]
-    labels = BASIN_GROUPS.keys()
-    ax = plt.gca()
-    ax.legend(handles, labels, loc="best")
+    # labels = BASIN_GROUPS.keys()
+    # ax = plt.gca()
+    # ax.legend(handles, labels, loc="best")
     plt.show()
 
 
@@ -607,9 +608,9 @@ def plot_reservoir_group_access_map():
             j, i = line.split(",")
             basins[i] = int(j)
 
-    wbds = get_contiguous_wbds()
-    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
-    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+    # wbds = get_contiguous_wbds()
+    # wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    # wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
 
     res_access = pd.read_csv(
         "../aggregated_results/res_group_access.csv", index_col=0, dtype=str
@@ -620,17 +621,18 @@ def plot_reservoir_group_access_map():
     color_pal = sns.color_palette("Set2")
     group_colors = {group: color_pal[i] for i, group in enumerate(groups)}
 
-    color_dict = {
-        tuple(item): color_pal[i] for i, (k, item) in enumerate(BASIN_GROUPS.items())
-    }
+    # color_dict = {
+    #     tuple(item): color_pal[i] for i, (k, item) in enumerate(BASIN_GROUPS.items())
+    # }
 
-    color_vars = {}
-    for wbd_id in wbd_ids:
-        for gbasins, color in color_dict.items():
-            if int(wbd_id) in gbasins:
-                color_vars[int(wbd_id)] = color
+    # color_vars = {}
+    # for wbd_id in wbd_ids:
+    #     for gbasins, color in color_dict.items():
+    #         if int(wbd_id) in gbasins:
+    #             color_vars[int(wbd_id)] = color
 
-    other_bounds = [(wbd_map[i], "k", "w") for i in color_vars.keys()]
+    # other_bounds = [(wbd_map[i], "k", "w") for i in color_vars.keys()]
+    other_bounds = []
 
     west, south, east, north = (
         -127.441406,
@@ -697,9 +699,9 @@ def plot_reservoir_most_likely_group_maps(model_results):
     )
     # norm = Normalize(vmin=0, vmax=11)
     # cmap = get_cmap("Set3")
-    color_pal = sns.color_palette("Set3")
-    norm = Normalize(vmin=1, vmax=10)
-    cmap = ListedColormap(color_pal.as_hex()[:10])
+    color_pal = sns.color_palette("Paired")
+    norm = Normalize(vmin=1, vmax=len(groups.unique()))
+    cmap = ListedColormap(color_pal.as_hex()[: len(groups.unique())])
     # group_colors = {i + 1: cmap(norm(i)) for i in range(10)}
     # group_colors = {i + 1: color_pal[i] for i in range(10)}
     resers = most_likely_groups["res"].values
@@ -836,12 +838,12 @@ def plot_reservoir_most_likely_group_maps(model_results):
             zorder=10,
         )
     plt.colorbar(
-        # ScalarMappable(norm=norm, cmap=cmap),
-        ScalarMappable(
-            norm=Normalize(vmin=1, vmax=10),
-            # cmap=ListedColormap(color_pal.as_hex()[:10]),
-            cmap=cmap,
-        ),
+        ScalarMappable(norm=norm, cmap=cmap),
+        # ScalarMappable(
+        #     # norm=Normalize(vmin=1, vmax=10),
+        #     # cmap=ListedColormap(color_pal.as_hex()[:10]),
+        #     cmap=cmap,
+        # ),
         cax=cbar_ax,
         orientation="vertical",
         label="Most Likely Operational Mode",
@@ -1067,7 +1069,10 @@ def plot_basin_mean_performance(
         aspect=4,
         shrink=0.8,
     )
-    fig.suptitle(f"{data_set.title()}ing Reservoirs")
+    if data_set == "simmed":
+        fig.suptitle(f"{data_set.title()} Reservoirs")
+    else:
+        fig.suptitle(f"{data_set.title()}ing Reservoirs")
     # plt.subplots_adjust(
     #     top=0.894,
     #     bottom=0.049,
@@ -1234,7 +1239,9 @@ def plot_basin_mean_performance_dset_tile(
     # )
 
 
-def plot_leave_out_performance_comparisons(model_path, axes=None):
+def plot_leave_out_performance_comparisons(
+    model_path, axes=None, label_x=True, label_y="left", legend="left"
+):
     pattern = re.compile(r"meta_(.*)_-?\d.\d+")
     search_result = re.search(pattern, model_path)
     if not search_result:
@@ -1252,6 +1259,11 @@ def plot_leave_out_performance_comparisons(model_path, axes=None):
 
     lower_20 = load_model_results(lower_20)
     upper_20 = load_model_results(upper_20)
+    base_results = load_model_results(
+        config.get_dir("results")
+        / "monthly_merged_data_set_minyr3"
+        / "TD6_MSS0.03_SM_basin_0.8"
+    )
 
     lower_20_train = lower_20["train_data"]
     lower_20_test = lower_20["test_data"]
@@ -1259,9 +1271,18 @@ def plot_leave_out_performance_comparisons(model_path, axes=None):
     upper_20_train = upper_20["train_data"]
     upper_20_test = upper_20["test_data"]
     upper_20_simmed = upper_20["simmed_data"]
+    base_train = base_results["train_data"]
 
     lower_20_resers = lower_20_test.index.get_level_values(0).unique()
     upper_20_resers = upper_20_test.index.get_level_values(0).unique()
+    base_resers = base_train.index.get_level_values(0).unique()
+
+    lower_20_base_overlap = set(lower_20_resers) & set(base_resers)
+    upper_20_base_overlap = set(upper_20_resers) & set(base_resers)
+    print(lower_20_base_overlap)
+    print(upper_20_base_overlap)
+    # * USE THESE VALUES TO SELECT RESERVOIRS FROM THE BASE MODEL
+    # * AND PLOT THEIR PERFORMANCE ON THE SET OF PLOTS AS WELL
 
     # select reservoirs from each training set that correspond to the
     # testing reservoirs in the other set
@@ -1298,12 +1319,27 @@ def plot_leave_out_performance_comparisons(model_path, axes=None):
 
     pretty_var = get_pretty_var_name(meta_var)
     titles = [f"Upper 20% {pretty_var}", f"Lower 20% {pretty_var}"]
-    for ax, df, title in zip(axes, [upper_20_comp, lower_20_comp], titles):
+    for i, (ax, df, title) in enumerate(
+        zip(axes, [upper_20_comp, lower_20_comp], titles)
+    ):
         ax.scatter(df["Included"], df["Excluded"], label="Testing")
         ax.scatter(df["Included"], df["Simmed"], label="Simmed")
-        ax.legend(loc="upper left")
-        ax.set_xlabel("NNSE (Trained)")
-        ax.set_ylabel("NNSE (Excluded)")
+        if i == 0 and legend == "left":
+            ax.legend(loc="upper left")
+        if i == 1 and legend == "right":
+            ax.legend(loc="upper left")
+        if legend is True:
+            ax.legend(loc="upper left")
+        if label_x:
+            ax.set_xlabel("NNSE (Trained)")
+
+        if i == 0 and label_y == "left":
+            ax.set_ylabel("NNSE (Excluded)")
+        if i == 1 and label_y == "right":
+            ax.set_ylabel("NNSE (Excluded)")
+        if label_y is True:
+            ax.set_ylabel("NNSE (Excluded)")
+
         ax.set_title(title)
         ax.set_xlim((-0.05, 1.05))
         ax.set_ylim((-0.05, 1.05))
@@ -1315,15 +1351,20 @@ def plot_leave_out_performance_comparisons(model_path, axes=None):
 
 def plot_all_leave_out_performance_comparisons():
     model_paths = [
-        "TD4_MSS0.09_SM_meta_rts_0.8",
-        "TD4_MSS0.09_SM_meta_max_sto_0.8",
-        "TD4_MSS0.09_SM_meta_rel_inf_corr_0.8",
+        "TD6_MSS0.03_SM_meta_rts_0.8",
+        "TD6_MSS0.03_SM_meta_max_sto_0.8",
+        "TD6_MSS0.03_SM_meta_rel_inf_corr_0.8",
     ]
 
     fig, axes = plt.subplots(3, 2)
+    label_args = [
+        {"label_x": False, "label_y": "left", "legend": "left"},
+        {"label_x": False, "label_y": "left", "legend": False},
+        {"label_x": True, "label_y": "left", "legend": False},
+    ]
 
-    for model_path, ax_row in zip(model_paths, axes):
-        plot_leave_out_performance_comparisons(model_path, ax_row)
+    for model_path, ax_row, kwargs in zip(model_paths, axes, label_args):
+        plot_leave_out_performance_comparisons(model_path, ax_row, **kwargs)
 
     plt.show()
 
@@ -1336,7 +1377,7 @@ if __name__ == "__main__":
     if args.model_path:
         model_path = args.model_path
     else:
-        model_path = "TD4_MSS0.09"
+        model_path = "TD6_MSS0.03_SM_basin_0.8"
 
     model_results = load_model_results(
         config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path
