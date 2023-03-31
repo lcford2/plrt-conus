@@ -134,3 +134,18 @@ def get_nrmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Ser
         scores = nrmse(df[actual], df[model])
     scores.name = "RMSE"
     return scores
+
+
+def jaccard(a: list, b: list) -> float:
+    """Calculate Jaccard index
+
+    Args:
+        a (list): Array of values
+        b (list): Array of values
+
+    Returns:
+        float: Jaccard index
+    """
+    intersection = len(list(set(a) & set(b)))
+    union = (len(a) + len(b)) - intersection
+    return float(intersection / union)

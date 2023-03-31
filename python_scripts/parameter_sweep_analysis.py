@@ -1,4 +1,5 @@
 import pathlib
+from collections import defaultdict
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -164,13 +165,20 @@ def metric_wide_to_long(
         )
     else:
         df = metric_df.melt(var_name="model", value_name=metric)
-    df[["TD", "MSS"]] = df["model"].str.split("_", expand=True).values[:, :2]
+
+    params = df["model"].str.split("_", expand=True)
+    if params.shape[1] == 5:
+        names = ["TD", "MSS", "Splitting Method", "Threshold"]
+    else:
+        names = ["TD", "MSS", "Splitting Method", "Spltting Var", "Threshold"]
+
+    df[names] = params.drop(2, axis=1).values
     df["TD"] = df["TD"].str.slice(2)
     df["MSS"] = df["MSS"].str.slice(3)
     return df.drop("model", axis=1)
 
 
-def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str) -> None:
+def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str, resers=None) -> None:
     """Box plot where X is tree depth, y is the metric, boxes are colored by
         MSS, and whiskers are set to 10% and 90%
 
@@ -178,6 +186,8 @@ def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str) -> None:
         metric_df (pd.DataFrame): Metric dataframe to plot
         metric (str): Name of metric to plot
     """
+    if resers is not None:
+        metric_df = metric_df.loc[resers]
     df = metric_wide_to_long(metric_df, metric)
     fg = sns.catplot(
         data=df,
@@ -326,7 +336,11 @@ def compare_training_testing_data(results: dict, min_years: int) -> None:
 
 
 def setup_map(
-    ax=None, coords=None, other_bound=None, label_positions=None, return_ticks=False
+    ax=None,
+    coords=None,
+    other_bound=None,
+    label_positions=None,
+    return_ticks=False,
 ) -> Basemap:
     """Generate a map with many common elements
 
@@ -388,7 +402,11 @@ def setup_map(
         zorder=-1,
     )
     mvals = m.drawmeridians(
-        meridians, linewidth=1.0, dashes=[1, 0], labels=label_positions, zorder=-1
+        meridians,
+        linewidth=1.0,
+        dashes=[1, 0],
+        labels=label_positions,
+        zorder=-1,
     )
     xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
     yticks = []
@@ -749,25 +767,126 @@ def correlate_res_metrics(metrics: dict, metric: str):
     plt.show()
 
 
+def get_unique_groups_from_results(results):
+    groups = {}
+    for m, output in results.items():
+        td, mss = m.split("_")[:2]
+        td = int(td[2:])
+        mss = float(mss[3:])
+        groups[(td, mss)] = output["groups"].unique()
+    return groups
+
+
+def get_model_rank_scores(results, metric="NNSE", resers=None):
+    simmed_data = get_data_from_results(results, dataset="simmed")
+    metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
+    if resers:
+        metrics = metrics[metric.lower()].loc[resers]
+    else:
+        metrics = metrics[metric.lower()]
+    df = metric_wide_to_long(metrics, metric)
+    df = df.groupby(["TD", "MSS"]).describe()
+    df.columns = df.columns.droplevel(0)
+    df = df[["mean", "std", "50%", "min", "max"]]
+    groups = get_unique_groups_from_results(results)
+    group_len = {i: j.size for i, j in groups.items()}
+    group_len = pd.Series(group_len, index=pd.MultiIndex.from_tuples(group_len.keys()))
+    group_len = group_len.sort_index()
+    df = df.sort_index()
+    df["ngroups"] = group_len.values
+    # ranks = df.rank()
+    # ranks["std"] = df["std"].rank(ascending=False)
+    # ranks["ngroups"] = df["ngroups"].rank(ascending=False)
+    # ranks["score"] = ranks.sum(axis=1)
+
+    best_of_each_size = df.groupby("ngroups")["mean"].idxmax()
+    best_of_each_size.name = "best_model"
+    best_of_each_size = best_of_each_size.to_frame()
+    best_of_each_size.loc[:, df[["mean", "std", "50%", "min", "max"]].columns] = df.loc[
+        best_of_each_size["best_model"], ["mean", "std", "50%", "min", "max"]
+    ].values
+
+    from IPython import embed as II
+
+    II()
+
+
+def ensure_no_single_res_groups(results, filter_group=True, filter_res=False):
+    good_models = []
+    for model, output in results.items():
+        groups = output["groups"]
+        counts = groups.groupby("res_id").value_counts().unstack()
+        group_na_count = (~counts.isna()).sum()
+        res_na_count = (~counts.isna()).sum(axis=1)
+        if (group_na_count <= 1).any() and filter_group:
+            continue
+        if (res_na_count <= 1).any() and filter_res:
+            continue
+        good_models.append(model)
+    return good_models
+
+
+def find_operational_groups(model_results):
+    groups = model_results["groups"]
+    unique = groups.groupby("res_id").unique()
+    op_groups = defaultdict(list)
+    for res, rgroups in unique.items():
+        op_groups[tuple(sorted(rgroups))].append(res)
+    return op_groups
+
+
+def find_similar_groups(op_groups, filter_zero=True):
+    from itertools import combinations
+
+    keys = list(op_groups.keys())
+    combos = combinations(keys, 2)
+    output = []
+    for g1, g2 in combos:
+        jac = metric_funcs.jaccard(g1, g2)
+        if filter_zero and jac == 0:
+            continue
+        output.append((g1, g2, metric_funcs.jaccard(g1, g2)))
+    return output
+
+
 if __name__ == "__main__":
     sns.set_theme(context="talk", palette="Set2")
 
     model_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
-    model = "TD5_MSS0.02"
-    # translate_tree_splitting_values(model_dir / model)
-    results = load_model_results_from_list(model_dir.iterdir())
-    simmed_data = get_data_from_results(results, dataset="simmed")
-    metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
-    from IPython import embed as II
+    model = "TD6_MSS0.03_SM_basin_0.8"
 
-    II()
+    # * Load testing and training sets of resers
+    basin_train, basin_test = load_pickle(
+        "./model_setup_files/test_train_basin_0.8.pickle"
+    )
+    test_resers = []
+    for resers in basin_test.values():
+        test_resers.extend(resers)
+
+    # translate_tree_splitting_values(model_dir / model)
     # plot_metric_box_plot(metrics["nnse"], "NNSE")
+    # * If you want to get all results from each model
+    # results = load_model_results_from_list(model_dir.iterdir())
+    # simmed_data = get_data_from_results(results, dataset="simmed")
+    # get_model_rank_scores(results, "NNSE")
+    # metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
+    # plot_metric_box_plot(metrics["nnse"], "NNSE", resers=test_resers)
 
     # make_parameter_sweep_comparison(metrics, "nnse")
 
-    # df = simmed_data.rename(columns={model: "simmed"})
-    # df["test"] = get_data_from_results(results, dataset="test")[model]
+    # * To get results from a single model
+    results = load_model_results(model_dir / model)
+    df = results["simmed_data"]
+    df = df.loc[pd.IndexSlice[test_resers, :], :]
+    df = df.rename(columns={"model": "simmed"})
+    df["test"] = results["test_data"]["model"]
     # plot_single_model_metrics(df)
+    op_groups = find_operational_groups(results)
+    sim_groups = find_similar_groups(op_groups)
+    sim_groups = sorted(sim_groups, key=lambda x: x[-1])
+    from IPython import embed as II
+
+    II()
 
     # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)

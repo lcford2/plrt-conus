@@ -40,3 +40,9 @@ def sorted_k_partitions(seq, k):
     result = sorted(result, key=lambda ps: (*map(len, ps), ps))
 
     return result
+
+
+def format_equation(param_vars, param_coefs):
+    return " + ".join(
+        [f"{coef} {param_vars[var]}" for var, coef in param_coefs.items()]
+    )

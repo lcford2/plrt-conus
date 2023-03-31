@@ -1255,8 +1255,10 @@ def plot_leave_out_performance_comparisons(model_path, axes=None):
 
     lower_20_train = lower_20["train_data"]
     lower_20_test = lower_20["test_data"]
+    lower_20_simmed = lower_20["simmed_data"]
     upper_20_train = upper_20["train_data"]
     upper_20_test = upper_20["test_data"]
+    upper_20_simmed = upper_20["simmed_data"]
 
     lower_20_resers = lower_20_test.index.get_level_values(0).unique()
     upper_20_resers = upper_20_test.index.get_level_values(0).unique()
@@ -1268,26 +1270,38 @@ def plot_leave_out_performance_comparisons(model_path, axes=None):
 
     lower_20_train_scores = get_nnse(lower_20_train, "actual", "model", "res_id")
     lower_20_test_scores = get_nnse(lower_20_test, "actual", "model", "res_id")
+    lower_20_simmed_scores = get_nnse(lower_20_simmed, "actual", "model", "res_id")
     upper_20_train_scores = get_nnse(upper_20_train, "actual", "model", "res_id")
     upper_20_test_scores = get_nnse(upper_20_test, "actual", "model", "res_id")
+    upper_20_simmed_scores = get_nnse(upper_20_simmed, "actual", "model", "res_id")
 
     upper_20_comp = pd.DataFrame.from_dict(
-        {"Included": lower_20_train_scores, "Excluded": upper_20_test_scores}
+        {
+            "Included": lower_20_train_scores,
+            "Excluded": upper_20_test_scores,
+            "Simmed": upper_20_simmed_scores,
+        }
     )
     lower_20_comp = pd.DataFrame.from_dict(
-        {"Included": upper_20_train_scores, "Excluded": lower_20_test_scores}
+        {
+            "Included": upper_20_train_scores,
+            "Excluded": lower_20_test_scores,
+            "Simmed": lower_20_simmed_scores,
+        }
     )
 
     show = False
     if axes is None:
-        fig, axes = plt.subplots(1, 2, sharex=True, sharey=True)
+        _, axes = plt.subplots(1, 2, sharex=True, sharey=True)
         axes = axes.flatten()
         show = True
 
     pretty_var = get_pretty_var_name(meta_var)
     titles = [f"Upper 20% {pretty_var}", f"Lower 20% {pretty_var}"]
     for ax, df, title in zip(axes, [upper_20_comp, lower_20_comp], titles):
-        ax.scatter(df["Included"], df["Excluded"])
+        ax.scatter(df["Included"], df["Excluded"], label="Testing")
+        ax.scatter(df["Included"], df["Simmed"], label="Simmed")
+        ax.legend(loc="upper left")
         ax.set_xlabel("NNSE (Trained)")
         ax.set_ylabel("NNSE (Excluded)")
         ax.set_title(title)
