@@ -13,7 +13,7 @@ from utils.config import config
 from utils.io import load_feather, load_pickle, load_results, write_pickle
 from utils.plot_tools import get_pretty_var_name, mxbline
 
-PSWEEP_RESULTS_DIR = config.get_dir("results") / "parameter_sweep"
+PSWEEP_RESULTS_DIR = config.get_dir("results") / "monthly_merged_data_set_minyr3"
 GIS_DIR = config.get_dir("general_data") / "GIS"
 
 
@@ -114,7 +114,7 @@ def calculate_metrics(
 
     file_name = "_".join(file_name_list)
     metrics_file = (
-        config.get_dir("agg_results") / "parameter_sweep" / f"{file_name}.pickle"
+        config.get_dir("agg_results") / "new_parameter_sweep" / f"{file_name}.pickle"
     )
     if not recalc and metrics_file.exists():
         return load_pickle(metrics_file.as_posix())
@@ -164,7 +164,7 @@ def metric_wide_to_long(
         )
     else:
         df = metric_df.melt(var_name="model", value_name=metric)
-    df[["TD", "MSS"]] = df["model"].str.split("_", expand=True)
+    df[["TD", "MSS"]] = df["model"].str.split("_", expand=True).values[:, :2]
     df["TD"] = df["TD"].str.slice(2)
     df["MSS"] = df["MSS"].str.slice(3)
     return df.drop("model", axis=1)
@@ -758,6 +758,9 @@ if __name__ == "__main__":
     results = load_model_results_from_list(model_dir.iterdir())
     simmed_data = get_data_from_results(results, dataset="simmed")
     metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
+    from IPython import embed as II
+
+    II()
     # plot_metric_box_plot(metrics["nnse"], "NNSE")
 
     # make_parameter_sweep_comparison(metrics, "nnse")
@@ -769,6 +772,6 @@ if __name__ == "__main__":
     # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)
 
-    plot_monthly_vs_longterm_mean_models()
+    # plot_monthly_vs_longterm_mean_models()
 
     # correlate_res_metrics(metrics, "nnse")
