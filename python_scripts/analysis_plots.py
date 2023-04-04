@@ -5,6 +5,7 @@ from collections import defaultdict
 from multiprocessing import cpu_count
 
 import geopandas as gpd
+import matplotlib.gridspec as mgridspec
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -13,7 +14,7 @@ import pandas as pd
 import seaborn as sns
 from fit_plrt_model import get_params_and_groups
 from joblib import Parallel, delayed
-from matplotlib.cm import get_cmap
+from matplotlib.cm import ScalarMappable, get_cmap
 from matplotlib.colors import ListedColormap, Normalize
 from parameter_sweep_analysis import (
     get_contiguous_wbds,
@@ -24,6 +25,7 @@ from parameter_sweep_analysis import (
 from scipy.stats import zscore
 from utils.config import config
 from utils.io import load_feather, load_pickle, write_feather, write_pickle
+from utils.metrics import get_entropy
 from utils.plot_tools import determine_grid_size, get_tick_years
 from utils.utils import format_equation
 
@@ -690,9 +692,120 @@ def parallel_body_colored_group_plots(
     plt.close()
 
 
+def load_op_groups():
+    op_groups = load_feather(
+        config.get_dir("agg_results") / "best_model_op_groups.feather",
+        index_keys=["index"],
+    )
+    op_groups["op_group"] = op_groups["op_group"].replace(
+        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"}
+    )
+    return op_groups
+
+
+def plot_basin_group_entropy(
+    model,
+    model_data,
+    op_group="all",
+    plot_res=False,
+):
+    groups = get_all_res_groups(model, model_data)
+    op_groups = load_op_groups()
+    if op_group != "all":
+        resers = op_groups.loc[op_groups["op_group"] == op_group, "res_id"]
+    else:
+        resers = op_groups["res_id"]
+    groups = groups.loc[pd.IndexSlice[resers, :]]
+
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = res_huc2.set_index("res_id")
+
+    # get name of wbd files
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    # get grand database
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+
+    scores = get_entropy(groups, "res_id")
+
+    resers = scores.index
+    res_huc2 = res_huc2.loc[resers]
+    res_huc2["entropy"] = scores
+
+    scores = res_huc2.groupby("huc2_id").mean()
+
+    # max_score = scores["entropy"].max()
+    # min_score = scores["entropy"].min()
+    # print(min_score, max_score)
+    # * doing the above for each group gives the following full bounds
+    min_score = 7.232680092715224
+    max_score = 9.443074543432123
+
+    score_range = max_score - min_score
+
+    norm = Normalize(
+        vmin=min_score - score_range * 0.05, vmax=max_score + score_range * 0.05
+    )
+    cmap = get_cmap("viridis")
+    other_bounds = []
+    for wbd_id, score in scores["entropy"].items():
+        wbd = wbd_map[int(wbd_id)]
+        color = cmap(norm(score))
+        other_bounds.append((wbd, "k", color))
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+
+    fig = plt.figure()
+    # gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
+    # ax = fig.add_subplot(gs[0, 0])
+    # cbar_ax = fig.add_subplot(gs[:, 1])
+
+    gs = mgridspec.GridSpec(2, 1, figure=fig, height_ratios=[20, 1])
+    ax = fig.add_subplot(gs[0, 0])
+    cbar_ax = fig.add_subplot(gs[1, :])
+
+    m = setup_map(coords=[west, south, east, north], other_bound=other_bounds, ax=ax)
+    maps = [m]
+
+    if plot_res:
+        res_coords = [
+            (row.LONG_DD, row.LAT_DD)
+            for i, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
+        ]
+        res_x, res_y = list(zip(*res_coords))
+
+        for m in maps:
+            m.scatter(
+                res_x,
+                res_y,
+                latlon=True,
+                marker="v",
+                color="r",
+                zorder=4,
+                sizes=res_huc2.loc[resers, "entropy"].values * 50,
+            )
+
+    plt.colorbar(
+        ScalarMappable(norm=norm, cmap=cmap),
+        cax=cbar_ax,
+        orientation="horizontal",
+        label="Basin Mean Op. Group Entropy",
+        aspect=4,
+        shrink=0.8,
+    )
+    plt.show()
+
+
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
-    sns.set_context("notebook", font_scale=1.1)
+    sns.set_context("talk", font_scale=1.1)
     plt.style.use("tableau-colorblind10")
     # args, remaining = parse_args()
     # func_args = parse_unknown_args(remaining)
@@ -710,7 +823,7 @@ if __name__ == "__main__":
     model_data = load_pickle(full_model_path / "datasets.pickle")
 
     # * Find operational groups
-    find_operational_groups_for_res(model, model_data)
+    # find_operational_groups_for_res(model, model_data)
 
     # * Plot operational groups on map
     # plot_operational_group_map(model_results)
@@ -735,4 +848,7 @@ if __name__ == "__main__":
     # plot_basin_group_makeup()
 
     # * Plot multicolored line plots
-    plot_res_group_colored_timeseries(model_results, model, model_data)
+    # plot_res_group_colored_timeseries(model_results, model, model_data)
+
+    # * Plot basin group variance map
+    plot_basin_group_entropy(model, model_data, op_group="Very Large", plot_res=False)

@@ -2,6 +2,7 @@ from typing import Union
 
 import numpy as np
 import pandas as pd
+from scipy.stats import entropy
 from sklearn.metrics import mean_squared_error, r2_score
 
 calc_type = Union[np.array, pd.Series]
@@ -59,9 +60,9 @@ def get_nse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Serie
     """
     if grouper is not None:
         scores = df.groupby(grouper).apply(lambda x: r2_score(x[actual], x[model]))
+        scores.name = "NSE"
     else:
         scores = r2_score(df[actual], df[model])
-    scores.name = "NSE"
     return scores
 
 
@@ -82,9 +83,9 @@ def get_nnse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Seri
     """
     if grouper is not None:
         scores = df.groupby(grouper).apply(lambda x: nnse(x[actual], x[model]))
+        scores.name = "NNSE"
     else:
         scores = nnse(df[actual], df[model])
-    scores.name = "NNSE"
     return scores
 
 
@@ -107,9 +108,9 @@ def get_rmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Seri
         scores = df.groupby(grouper).apply(
             lambda x: mean_squared_error(x[actual], x[model], squared=False)
         )
+        scores.name = "RMSE"
     else:
         scores = mean_squared_error(df[actual], df[model], squared=False)
-    scores.name = "RMSE"
     return scores
 
 
@@ -130,9 +131,51 @@ def get_nrmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Ser
     """
     if grouper is not None:
         scores = df.groupby(grouper).apply(lambda x: nrmse(x[actual], x[model]))
+        scores.name = "RMSE"
     else:
         scores = nrmse(df[actual], df[model])
-    scores.name = "RMSE"
+    return scores
+
+
+def get_variance(values: pd.Series, grouper=None) -> pd.Series:
+    """Get Variance of values.
+
+    If grouper is not None, will get Variance for each unique item in grouper
+
+    Args:
+        values (pd.Series): Series containing values to get variance for
+        grouper (any, optional): mapping, function, label, or list of labels.
+            Defaults to None.
+
+    Returns:
+        pd.Series: NRMSE Values
+    """
+    if grouper is not None:
+        scores = values.groupby(grouper).var()
+        scores.name = "variance"
+    else:
+        scores = values.var()
+    return scores
+
+
+def get_entropy(values: pd.Series, grouper=None) -> pd.Series:
+    """Get entropy of values.
+
+    If grouper is not None, will get entropy for each unique item in grouper
+
+    Args:
+        values (pd.Series): Series containing values to get entropy for
+        grouper (any, optional): mapping, function, label, or list of labels.
+            Defaults to None.
+
+    Returns:
+        pd.Series: entropy values
+    """
+    if grouper is not None:
+        scores = values.groupby(grouper).apply(entropy)
+        scores.name = "entropy"
+    else:
+        scores = entropy(values)
     return scores
 
 

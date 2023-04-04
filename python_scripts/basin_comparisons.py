@@ -12,6 +12,7 @@ import matplotlib.gridspec as mgridspec
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scienceplots  # noqa: F401
 import seaborn as sns
 from fit_plrt_model import load_resopsus_data
 from joblib import Parallel, delayed
@@ -1094,6 +1095,211 @@ def plot_basin_mean_performance(
     # )
 
 
+def plot_basin_group_variance(
+    model_results,
+    metric="NNSE",
+    data_set="train",
+    plot_res=False,
+    monthly=False,
+):
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = res_huc2.set_index("res_id")
+
+    # get name of wbd files
+    wbds = get_contiguous_wbds()
+    wbd_ids = [re.search(r"WBD_(\d\d)_HU2", i).group(1) for i in wbds]
+    wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
+
+    # get grand database
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
+
+    df = model_results[f"{data_set}_data"]
+    if metric == "NNSE":
+        metric_func = get_nnse
+    else:
+        metric_func = get_nrmse
+
+    if monthly:
+        scores = metric_func(
+            df,
+            "actual",
+            "model",
+            [
+                df.index.get_level_values(0),
+                df.index.get_level_values(1).month,
+            ],
+        )
+        scores = scores.unstack()
+    else:
+        scores = metric_func(df, "actual", "model", "res_id")
+
+    resers = scores.index
+    res_huc2 = res_huc2.loc[resers]
+    if monthly:
+        res_huc2 = res_huc2.join(scores)
+    else:
+        res_huc2[metric] = scores
+
+    scores = res_huc2.groupby("huc2_id").mean()
+
+    if monthly:
+        max_score = scores.max().max()
+        min_score = scores.min().min()
+    else:
+        scores = scores[metric]
+        max_score = scores.max()
+        min_score = scores.min()
+
+    score_range = max_score - min_score
+
+    norm = Normalize(
+        vmin=max([min_score - score_range * 0.05, 0]),
+        vmax=min([max_score + score_range * 0.05, 1]),
+    )
+    cmap = get_cmap("viridis")
+    other_bounds = []
+    if monthly:
+        for month in range(1, 13):
+            temp_bounds = []
+            for basin in scores.index:
+                wbd = wbd_map[int(basin)]
+                color = cmap(norm(scores.loc[basin, month]))
+                temp_bounds.append((wbd, "k", color))
+            other_bounds.append(temp_bounds)
+    else:
+        for wbd_id, score in scores.items():
+            wbd = wbd_map[int(wbd_id)]
+            color = cmap(norm(score))
+            other_bounds.append((wbd, "k", color))
+
+    west, south, east, north = (
+        -127.441406,
+        24.207069,
+        -66.093750,
+        53.382373,
+    )
+
+    if monthly:
+        fig = plt.figure()
+        gs = mgridspec.GridSpec(3, 5, figure=fig, width_ratios=[10, 10, 10, 10, 1])
+        axes = []
+        for i in range(3):
+            for j in range(4):
+                axes.append(fig.add_subplot(gs[i, j]))
+        cbar_ax = fig.add_subplot(gs[:, 4])
+        label_positions = [
+            [1, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [1, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [0, 0, 0, 0],
+            [1, 0, 0, 1],
+            [0, 0, 0, 1],
+            [0, 0, 0, 1],
+            [0, 0, 0, 1],
+        ]
+        maps = [
+            setup_map(
+                coords=[west, south, east, north],
+                other_bound=ob,
+                ax=ax,
+                label_positions=lp,
+                return_ticks=True,
+            )
+            for ax, lp, ob in zip(axes, label_positions, other_bounds)
+        ]
+        for i, ax in enumerate(axes):
+            ax.set_title(calendar.month_name[i + 1])
+        mvals, pvals = maps[8][1:]
+        xticks = [i[1][0].get_position()[0] for i in mvals.values() if i[1]]
+        yticks = []
+        for i in pvals.values():
+            try:
+                yticks.append(i[1][0].get_position()[1])
+            except IndexError:
+                pass
+
+        for ax in axes:
+            ax.set_xticks(xticks)
+            ax.set_yticks(yticks)
+            ax.tick_params(
+                axis="both",
+                direction="in",
+                left=True,
+                right=True,
+                top=True,
+                bottom=True,
+                labelleft=False,
+                labelright=False,
+                labeltop=False,
+                labelbottom=False,
+                zorder=10,
+            )
+    else:
+        fig = plt.figure()
+        gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
+        ax = fig.add_subplot(gs[0, 0])
+        cbar_ax = fig.add_subplot(gs[:, 1])
+
+        m = setup_map(
+            coords=[west, south, east, north], other_bound=other_bounds, ax=ax
+        )
+        maps = [m]
+
+    if plot_res:
+        res_coords = [
+            (row.LONG_DD, row.LAT_DD)
+            for i, row in grand[grand["GRAND_ID"].isin(resers)].iterrows()
+        ]
+        res_x, res_y = list(zip(*res_coords))
+
+        for m in maps:
+            m.scatter(
+                res_x,
+                res_y,
+                latlon=True,
+                marker="v",
+                color="r",
+                zorder=4,
+                sizes=res_huc2.loc[resers, metric].values * 50,
+            )
+
+    plt.colorbar(
+        ScalarMappable(norm=norm, cmap=cmap),
+        cax=cbar_ax,
+        orientation="vertical",
+        label=f"Basin Average {metric}",
+        aspect=4,
+        shrink=0.8,
+    )
+    if data_set == "simmed":
+        fig.suptitle(f"{data_set.title()} Reservoirs")
+    else:
+        fig.suptitle(f"{data_set.title()}ing Reservoirs")
+    # plt.subplots_adjust(
+    #     top=0.894,
+    #     bottom=0.049,
+    #     left=0.058,
+    #     right=0.937,
+    #     hspace=0.2,
+    #     wspace=0.142,
+    # )
+    plt.show()
+    # if monthly:
+    #     file_name = f"{data_set}_{metric}_monthly.png"
+    # else:
+    #     file_name = f"{data_set}_{metric}.png"
+
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         f"~/Dropbox/plrt-conus-figures/basin_performance/{file_name}"
+    #     )
+    # )
+
+
 def plot_basin_mean_performance_dset_tile(
     model_results,
     metric="NNSE",
@@ -1336,31 +1542,36 @@ def new_plot_leave_out_performance_comparisons(
             train_df["base"],
             train_df["experimental"],
             label="Training Reservoirs",
+            s=30,
         )
         ax.scatter(
             test_df["base"],
             test_df["experimental"],
             label="Testing Reservoirs",
+            s=30,
         )
+        legend_prop = {"size": 12}
+        label_size = 14
         if i == 0 and legend == "left":
-            ax.legend(loc="upper left")
+            ax.legend(loc="upper left", prop=legend_prop)
         if i == 1 and legend == "right":
-            ax.legend(loc="upper left")
+            ax.legend(loc="upper left", prop=legend_prop)
         if legend is True:
-            ax.legend(loc="upper left")
+            ax.legend(loc="upper left", prop=legend_prop)
         if label_x:
-            ax.set_xlabel("NNSE (Base Model)")
+            ax.set_xlabel("NNSE (Base Model)", fontsize=label_size)
 
         if i == 0 and label_y == "left":
-            ax.set_ylabel("NNSE (Excluded)")
+            ax.set_ylabel("NNSE (Excluded)", fontsize=label_size)
         if i == 1 and label_y == "right":
-            ax.set_ylabel("NNSE (Excluded)")
+            ax.set_ylabel("NNSE (Excluded)", fontsize=label_size)
         if label_y is True:
-            ax.set_ylabel("NNSE (Excluded)")
+            ax.set_ylabel("NNSE (Excluded)", fontsize=label_size)
 
-        ax.set_title(title)
+        ax.set_title(title, fontsize=label_size)
         ax.set_xlim((-0.05, 1.05))
         ax.set_ylim((-0.05, 1.05))
+        ax.tick_params(axis="both", which="major", labelsize=12)
         mxbline(m=1, b=0, ax=ax, color="k", ls="--", lw=1)
 
     if show:
@@ -1388,7 +1599,9 @@ def plot_all_leave_out_performance_comparisons():
 
 
 if __name__ == "__main__":
-    sns.set_theme(context="notebook", palette="Set2", font_scale=1.1)
+    # sns.set_theme(context="notebook", palette="Set2", font_scale=1.1)
+    # sns.set_context("poster", font_scale=1.1)
+    plt.style.use(["science", "nature"])
     args, remaining = parse_args()
     func_args = parse_unknown_args(remaining)
 
@@ -1421,7 +1634,7 @@ if __name__ == "__main__":
     #     monthly_group=False,
     #     plot_pairs=False
     # )
-    # plot_basin_mean_performance(model_results, **func_args)
+    plot_basin_mean_performance(model_results, **func_args)
     # plot_basin_mean_performance_dset_tile(model_results, **func_args)
     # plot_leave_out_performance_comparisons(model_path)
-    plot_all_leave_out_performance_comparisons()
+    # plot_all_leave_out_performance_comparisons()
