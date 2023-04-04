@@ -1277,10 +1277,8 @@ def plot_leave_out_performance_comparisons(
     upper_20_resers = upper_20_test.index.get_level_values(0).unique()
     base_resers = base_train.index.get_level_values(0).unique()
 
-    lower_20_base_overlap = set(lower_20_resers) & set(base_resers)
-    upper_20_base_overlap = set(upper_20_resers) & set(base_resers)
-    print(lower_20_base_overlap)
-    print(upper_20_base_overlap)
+    lower_20_base_overlap = list(set(lower_20_resers) & set(base_resers))
+    upper_20_base_overlap = list(set(upper_20_resers) & set(base_resers))
     # * USE THESE VALUES TO SELECT RESERVOIRS FROM THE BASE MODEL
     # * AND PLOT THEIR PERFORMANCE ON THE SET OF PLOTS AS WELL
 
@@ -1288,6 +1286,8 @@ def plot_leave_out_performance_comparisons(
     # testing reservoirs in the other set
     lower_20_train = lower_20_train.loc[pd.IndexSlice[upper_20_resers, :], :]
     upper_20_train = upper_20_train.loc[pd.IndexSlice[lower_20_resers, :], :]
+    lower_overlap = base_train.loc[pd.IndexSlice[lower_20_base_overlap, :], :]
+    upper_overlap = base_train.loc[pd.IndexSlice[upper_20_base_overlap, :], :]
 
     lower_20_train_scores = get_nnse(lower_20_train, "actual", "model", "res_id")
     lower_20_test_scores = get_nnse(lower_20_test, "actual", "model", "res_id")
@@ -1295,12 +1295,15 @@ def plot_leave_out_performance_comparisons(
     upper_20_train_scores = get_nnse(upper_20_train, "actual", "model", "res_id")
     upper_20_test_scores = get_nnse(upper_20_test, "actual", "model", "res_id")
     upper_20_simmed_scores = get_nnse(upper_20_simmed, "actual", "model", "res_id")
+    lower_overlap_score = get_nnse(lower_overlap, "actual", "model", "res_id")
+    upper_overlap_score = get_nnse(upper_overlap, "actual", "model", "res_id")
 
     upper_20_comp = pd.DataFrame.from_dict(
         {
             "Included": lower_20_train_scores,
             "Excluded": upper_20_test_scores,
             "Simmed": upper_20_simmed_scores,
+            "Overlap": upper_overlap_score,
         }
     )
     lower_20_comp = pd.DataFrame.from_dict(
@@ -1308,6 +1311,7 @@ def plot_leave_out_performance_comparisons(
             "Included": upper_20_train_scores,
             "Excluded": lower_20_test_scores,
             "Simmed": lower_20_simmed_scores,
+            "Overlap": lower_overlap_score,
         }
     )
 
@@ -1324,6 +1328,7 @@ def plot_leave_out_performance_comparisons(
     ):
         ax.scatter(df["Included"], df["Excluded"], label="Testing")
         ax.scatter(df["Included"], df["Simmed"], label="Simmed")
+        ax.scatter(df["Included"], df["Overlap"], label="Base Model")
         if i == 0 and legend == "left":
             ax.legend(loc="upper left")
         if i == 1 and legend == "right":

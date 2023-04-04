@@ -7,6 +7,7 @@ from multiprocessing import cpu_count
 import geopandas as gpd
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mtick
 import pandas as pd
 import seaborn as sns
 from fit_plrt_model import get_params_and_groups
@@ -485,8 +486,41 @@ def plot_reservoir_most_likely_group_maps(model, model_data, op_group):
     plt.show()
 
 
+def plot_basin_group_makeup():
+    op_groups = load_feather(
+        config.get_dir("agg_results") / "best_model_op_groups.feather",
+        index_keys=["index"],
+    ).set_index("res_id")
+    op_groups["op_group"] = op_groups["op_group"].replace(
+        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"}
+    )
+    res_huc2 = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather",
+        index_keys=["res_id"],
+    )
+    op_groups["basin"] = res_huc2
+
+    counts = op_groups.groupby("basin")["op_group"].value_counts().unstack().fillna(0)
+    props = counts.divide(counts.sum(axis=1), axis=0)
+    props.index = props.index.astype(int)
+    props = props.sort_index()
+    props = props[OP_GROUP_FINAL_KEYS]
+    ax = props.plot.bar(stacked=True, width=0.8, edgecolor="k")
+    ax.yaxis.set_major_formatter(mtick.PercentFormatter(1.0))
+    ax.set_xticklabels([f"{i:02d}" for i in props.index], rotation=0)
+    ax.set_xlabel("HUC2")
+    ax.set_ylabel("Op. Group Proportion")
+    # ax.get_legend().set_title("Op. Group")
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles, labels, ncol=5, loc="upper left")
+    ax.set_ylim(0, 1.09)
+    plt.show()
+
+
 if __name__ == "__main__":
-    sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
+    # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
+    sns.set_context("notebook", font_scale=1.1)
+    plt.style.use("tableau-colorblind10")
     # args, remaining = parse_args()
     # func_args = parse_unknown_args(remaining)
 
@@ -521,5 +555,8 @@ if __name__ == "__main__":
     #    plot_basin_specific_seasonal_operations(model, model_data, mode)
 
     # * Plot seasonal operation maps for a specific group
-    for op_group in TIME_VARYING_GROUPS:
-        plot_reservoir_most_likely_group_maps(model, model_data, op_group)
+    # for op_group in TIME_VARYING_GROUPS:
+    #     plot_reservoir_most_likely_group_maps(model, model_data, op_group)
+
+    # * Plot charts for reservoir group breakdown for each basin
+    plot_basin_group_makeup()
