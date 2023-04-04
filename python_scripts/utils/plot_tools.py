@@ -2,6 +2,7 @@ from typing import Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 
 _PRETTY_VAR_NAMES_MATH = {
     "rts": r"$RT$",
@@ -67,3 +68,17 @@ def determine_grid_size(N: int) -> Tuple[int, int]:
         poss = poss_1 + poss_2
         min_index = np.argmin([sum(i) for i in poss])
         return poss[min_index]
+
+
+def get_tick_years(index, ax):
+    nticks = len(ax.get_xticks()) - 1
+    start_year = index.min().year + 1
+    stop_year = index.max().year
+    nyears = stop_year - start_year
+    tick_years = np.arange(start_year, stop_year, max([nyears // max([nticks, 1]), 1]))
+
+    ticks = [
+        np.where(index == pd.Timestamp(year=i, day=1, month=1))[0][0]
+        for i in tick_years
+    ]
+    return tick_years, ticks

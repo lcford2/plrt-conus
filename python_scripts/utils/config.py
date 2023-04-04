@@ -60,7 +60,20 @@ class ConfigObject:
             attr_name = f"f_{key}"
             setattr(self, attr_name, value)
 
-    def get_dir(self, dir_key):
+    def get_dir(self, dir_key: str) -> pathlib.Path:
+        """Get directory object
+
+        Args:
+            dir_key (str): key for directory dictionary. Possible values:
+                ['root', 'general_data', 'resops', 'data', 'spatial_data',
+                 'model_ready_data', 'results', 'agg_results', 'data_to_sync']
+
+        Raises:
+            KeyError: if invalid key
+
+        Returns:
+            pathlib.Path: directory object
+        """
         if dir_key not in self.dirs:
             raise KeyError(f"{dir_key} is not valid.")
         return self.dirs[dir_key]

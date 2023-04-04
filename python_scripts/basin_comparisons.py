@@ -1239,9 +1239,22 @@ def plot_basin_mean_performance_dset_tile(
     # )
 
 
-def plot_leave_out_performance_comparisons(
+def new_plot_leave_out_performance_comparisons(
     model_path, axes=None, label_x=True, label_y="left", legend="left"
 ):
+    """Plot the experimental NNSE for Training and Testing reservoirs against
+    the base model NNSE for Training and Testing reservoirs.
+
+    Args:
+        model_path (str | pathlib.Path): Path to model results.
+        axes (list, optional): Axes to plot on. Defaults to None.
+        label_x (bool, optional): Draw X labels. Defaults to True.
+        label_y (str | bool, optional): How to label y axis. Defaults to "left".
+        legend (str | bool, optional): How to draw legend. Defaults to "left".
+
+    Raises:
+        ValueError: Model path does not have a meta variable
+    """
     pattern = re.compile(r"meta_(.*)_-?\d.\d+")
     search_result = re.search(pattern, model_path)
     if not search_result:
@@ -1271,49 +1284,41 @@ def plot_leave_out_performance_comparisons(
     upper_20_train = upper_20["train_data"]
     upper_20_test = upper_20["test_data"]
     upper_20_simmed = upper_20["simmed_data"]
-    base_train = base_results["train_data"]
+    base_simul = base_results["simmed_data"]
 
-    lower_20_resers = lower_20_test.index.get_level_values(0).unique()
-    upper_20_resers = upper_20_test.index.get_level_values(0).unique()
-    base_resers = base_train.index.get_level_values(0).unique()
+    lower_20_test_resers = lower_20_test.index.get_level_values(0).unique()
+    upper_20_test_resers = upper_20_test.index.get_level_values(0).unique()
+    lower_20_train_resers = lower_20_train.index.get_level_values(0).unique()
+    upper_20_train_resers = upper_20_train.index.get_level_values(0).unique()
 
-    lower_20_base_overlap = list(set(lower_20_resers) & set(base_resers))
-    upper_20_base_overlap = list(set(upper_20_resers) & set(base_resers))
-    # * USE THESE VALUES TO SELECT RESERVOIRS FROM THE BASE MODEL
-    # * AND PLOT THEIR PERFORMANCE ON THE SET OF PLOTS AS WELL
+    # select simulation records from experimental sets that correspond
+    # to training and testing reservoirs.
+    upper_train_df = upper_20_simmed.loc[
+        pd.IndexSlice[upper_20_train_resers, :], :
+    ].copy()
+    upper_test_df = upper_20_simmed.loc[
+        pd.IndexSlice[upper_20_test_resers, :], :
+    ].copy()
+    lower_train_df = lower_20_simmed.loc[
+        pd.IndexSlice[lower_20_train_resers, :], :
+    ].copy()
+    lower_test_df = lower_20_simmed.loc[
+        pd.IndexSlice[lower_20_test_resers, :], :
+    ].copy()
 
-    # select reservoirs from each training set that correspond to the
-    # testing reservoirs in the other set
-    lower_20_train = lower_20_train.loc[pd.IndexSlice[upper_20_resers, :], :]
-    upper_20_train = upper_20_train.loc[pd.IndexSlice[lower_20_resers, :], :]
-    lower_overlap = base_train.loc[pd.IndexSlice[lower_20_base_overlap, :], :]
-    upper_overlap = base_train.loc[pd.IndexSlice[upper_20_base_overlap, :], :]
+    # calculate the base model simul NNSE
+    base_simul_scores = get_nnse(base_simul, "actual", "model", "res_id")
+    base_simul_scores.name = "base"
+    base_simul_scores = base_simul_scores.to_frame()
 
-    lower_20_train_scores = get_nnse(lower_20_train, "actual", "model", "res_id")
-    lower_20_test_scores = get_nnse(lower_20_test, "actual", "model", "res_id")
-    lower_20_simmed_scores = get_nnse(lower_20_simmed, "actual", "model", "res_id")
-    upper_20_train_scores = get_nnse(upper_20_train, "actual", "model", "res_id")
-    upper_20_test_scores = get_nnse(upper_20_test, "actual", "model", "res_id")
-    upper_20_simmed_scores = get_nnse(upper_20_simmed, "actual", "model", "res_id")
-    lower_overlap_score = get_nnse(lower_overlap, "actual", "model", "res_id")
-    upper_overlap_score = get_nnse(upper_overlap, "actual", "model", "res_id")
-
-    upper_20_comp = pd.DataFrame.from_dict(
-        {
-            "Included": lower_20_train_scores,
-            "Excluded": upper_20_test_scores,
-            "Simmed": upper_20_simmed_scores,
-            "Overlap": upper_overlap_score,
-        }
-    )
-    lower_20_comp = pd.DataFrame.from_dict(
-        {
-            "Included": upper_20_train_scores,
-            "Excluded": lower_20_test_scores,
-            "Simmed": lower_20_simmed_scores,
-            "Overlap": lower_overlap_score,
-        }
-    )
+    # calculate the experimental simul NNSE and add base nnse to the frame
+    experiment_dfs = []
+    for df in [upper_train_df, upper_test_df, lower_train_df, lower_test_df]:
+        scores = get_nnse(df, "actual", "model", "res_id")
+        scores.name = "experimental"
+        scores = scores.to_frame()
+        scores["base"] = base_simul_scores.loc[scores.index, "base"]
+        experiment_dfs.append(scores)
 
     show = False
     if axes is None:
@@ -1323,12 +1328,20 @@ def plot_leave_out_performance_comparisons(
 
     pretty_var = get_pretty_var_name(meta_var)
     titles = [f"Upper 20% {pretty_var}", f"Lower 20% {pretty_var}"]
-    for i, (ax, df, title) in enumerate(
-        zip(axes, [upper_20_comp, lower_20_comp], titles)
+    for i, (ax, dfs, title) in enumerate(
+        zip(axes, [experiment_dfs[:2], experiment_dfs[2:]], titles)
     ):
-        ax.scatter(df["Included"], df["Excluded"], label="Testing")
-        ax.scatter(df["Included"], df["Simmed"], label="Simmed")
-        ax.scatter(df["Included"], df["Overlap"], label="Base Model")
+        train_df, test_df = dfs
+        ax.scatter(
+            train_df["base"],
+            train_df["experimental"],
+            label="Training Reservoirs",
+        )
+        ax.scatter(
+            test_df["base"],
+            test_df["experimental"],
+            label="Testing Reservoirs",
+        )
         if i == 0 and legend == "left":
             ax.legend(loc="upper left")
         if i == 1 and legend == "right":
@@ -1336,7 +1349,7 @@ def plot_leave_out_performance_comparisons(
         if legend is True:
             ax.legend(loc="upper left")
         if label_x:
-            ax.set_xlabel("NNSE (Trained)")
+            ax.set_xlabel("NNSE (Base Model)")
 
         if i == 0 and label_y == "left":
             ax.set_ylabel("NNSE (Excluded)")
@@ -1369,7 +1382,7 @@ def plot_all_leave_out_performance_comparisons():
     ]
 
     for model_path, ax_row, kwargs in zip(model_paths, axes, label_args):
-        plot_leave_out_performance_comparisons(model_path, ax_row, **kwargs)
+        new_plot_leave_out_performance_comparisons(model_path, ax_row, **kwargs)
 
     plt.show()
 

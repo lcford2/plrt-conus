@@ -8,9 +8,11 @@ import geopandas as gpd
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from fit_plrt_model import get_params_and_groups
+from joblib import Parallel, delayed
 from matplotlib.cm import get_cmap
 from matplotlib.colors import ListedColormap, Normalize
 from parameter_sweep_analysis import (
@@ -19,9 +21,10 @@ from parameter_sweep_analysis import (
     load_model_results,
     setup_map,
 )
+from scipy.stats import zscore
 from utils.config import config
 from utils.io import load_feather, load_pickle, write_feather, write_pickle
-from utils.plot_tools import determine_grid_size
+from utils.plot_tools import determine_grid_size, get_tick_years
 from utils.utils import format_equation
 
 plt.rcParams["svg.fonttype"] = "none"
@@ -251,7 +254,7 @@ def get_basin_op_mode_breakdown():
     II()
 
 
-def get_res_seasonal_operations(model, model_data, op_group):
+def get_all_res_groups(model, model_data):
     _, train_groups = get_params_and_groups(model_data["train"], model)
     _, test_groups = get_params_and_groups(model_data["test"], model)
     # get the unique final leaves
@@ -263,8 +266,11 @@ def get_res_seasonal_operations(model, model_data, op_group):
     train_groups = train_groups.apply(group_map.get)
     test_groups = test_groups.apply(group_map.get)
 
-    groups = pd.concat([train_groups, test_groups])
+    return pd.concat([train_groups, test_groups])
 
+
+def get_res_seasonal_operations(model, model_data, op_group):
+    groups = get_all_res_groups(model, model_data)
     res_op_groups = load_feather(
         config.get_dir("agg_results") / "best_model_op_groups.feather"
     )
@@ -517,6 +523,173 @@ def plot_basin_group_makeup():
     plt.show()
 
 
+def plot_res_group_colored_timeseries(results, model, model_data, res=None):
+    from fit_plrt_model import load_resopsus_data
+
+    data, meta = load_resopsus_data(min_years=3)
+    groups = get_all_res_groups(model, model_data)
+
+    df = data.loc[:, ["storage", "inflow", "release"]]
+    df["groups"] = groups
+    df["modeled_release"] = pd.concat(
+        [results["train_data"]["model"], results["test_data"]["model"]]
+    )
+
+    grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info").set_index(
+        "GRAND_ID"
+    )
+
+    res_huc2 = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather",
+        index_keys=["res_id"],
+    )
+    huc2_names = pd.read_csv(
+        config.get_dir("spatial_data") / "huc2_names.csv",
+        header=None,
+        names=["huc2_id", "huc2_name"],
+    ).set_index("huc2_id")
+
+    style_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    op_groups = load_pickle(
+        config.get_dir("agg_results") / "best_model_op_groups.pickle"
+    )
+    op_groups["Large"] = [
+        *op_groups["Large 1"],
+        *op_groups["Large 2"],
+        *op_groups["Large 3"],
+    ]
+    for i in range(1, 4):
+        del op_groups[f"Large {i}"]
+
+    parallel = True
+
+    iterator = []
+    for op_group in TIME_VARYING_GROUPS:
+        for res in op_groups[op_group]:
+            iterator.append((op_group, res))
+
+    if parallel:
+        Parallel(n_jobs=-1, verbose=11)(
+            delayed(parallel_body_colored_group_plots)(
+                df,
+                res,
+                grand.loc[res, "DAM_NAME"],
+                res_huc2.loc[res, "huc2_id"],
+                huc2_names.loc[int(res_huc2.loc[res, "huc2_id"]), "huc2_name"],
+                style_colors,
+                op_group,
+                save=True,
+            )
+            for op_group, res in iterator
+        )
+    else:
+        for op_group, res in iterator:
+            huc2 = res_huc2.loc[res, "huc2_id"]
+            parallel_body_colored_group_plots(
+                df,
+                res,
+                grand.loc[res, "DAM_NAME"],
+                huc2,
+                huc2_names.loc[int(huc2), "huc2_name"],
+                style_colors,
+                op_group,
+                show=True,
+                save=True,
+            )
+
+
+def parallel_body_colored_group_plots(
+    df,
+    res,
+    print_res,
+    basin,
+    print_basin,
+    style_colors,
+    op_group,
+    show=False,
+    save=True,
+):
+    pdf = df.loc[pd.IndexSlice[res, :]]
+    rgroups = sorted(pdf["groups"].unique())
+    if len(rgroups) == 1:
+        return
+
+    plot_resid = False
+    if plot_resid:
+        fig, axes = plt.subplots(4, 1, sharex=True, figsize=(19, 10))
+        axes = axes.flatten()
+    else:
+        fig, axes = plt.subplots(3, 1, sharex=True, figsize=(19, 10))
+        axes = axes.flatten()
+
+    pdf = pdf.reset_index()
+
+    for var in ["storage", "inflow"]:
+        inf_scores = zscore(pdf[var])
+        pdf.loc[inf_scores.abs() > 3, var] = np.nan
+        pdf[var] = pdf[var].interpolate()
+
+    pdf["residual"] = pdf["modeled_release"] - pdf["release"]
+
+    colors = [style_colors[rgroups.index(i)] for i in pdf["groups"]]
+    axes[0].scatter(pdf.index, pdf["storage"], c=colors, s=10)
+    axes[1].scatter(pdf.index, pdf["inflow"], c=colors, s=10)
+    axes[2].scatter(pdf.index, pdf["release"], c=colors, s=10)
+    if plot_resid:
+        axes[3].scatter(
+            pdf.index,
+            pdf["modeled_release"] - pdf["release"],
+            c=colors,
+            s=10,
+        )
+
+    axes[0].set_ylabel("Storage [TAF]")
+    axes[1].set_ylabel("Inflow [TAF/day]")
+    axes[2].set_ylabel("Release [TAF/day]")
+    bottom_ax = axes[2]
+    if plot_resid:
+        axes[3].set_ylabel("Residual [TAF/day]")
+        bottom_ax = axes[3]
+
+    index = pdf["date"]
+    tick_years, ticks = get_tick_years(index, bottom_ax)
+    tick_labels = [str(i) for i in tick_years]
+
+    bottom_ax.set_xticks(ticks)
+    bottom_ax.set_xticklabels(tick_labels)
+    handles = [
+        plt.scatter([], [], color=style_colors[i], alpha=1) for i in range(len(rgroups))
+    ]
+    labels = [int(i) for i in rgroups]
+    bottom_ax.legend(handles, labels, loc="upper right")
+    fig.align_ylabels()
+    fig.suptitle(f"{print_res} - {print_basin}")
+    plt.subplots_adjust(
+        top=0.945,
+        bottom=0.045,
+        left=0.045,
+        right=0.991,
+        hspace=0.126,
+        wspace=0.2,
+    )
+
+    if save:
+        file_res = "_".join(print_res.lower().split())
+        odir = os.path.expanduser(
+            "~/Dropbox/plrt-conus-figures/good_figures/"
+            f"group_colored_timeseries/{op_group}"
+        )
+        if not os.path.exists(odir):
+            os.makedirs(odir)
+        plt.savefig(
+            os.path.join(odir, f"{basin}_{file_res}.png"),
+            dpi=450,
+        )
+    if show:
+        plt.show()
+    plt.close()
+
+
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
     sns.set_context("notebook", font_scale=1.1)
@@ -537,7 +710,7 @@ if __name__ == "__main__":
     model_data = load_pickle(full_model_path / "datasets.pickle")
 
     # * Find operational groups
-    # find_operational_groups_for_res(model, model_data)
+    find_operational_groups_for_res(model, model_data)
 
     # * Plot operational groups on map
     # plot_operational_group_map(model_results)
@@ -559,4 +732,7 @@ if __name__ == "__main__":
     #     plot_reservoir_most_likely_group_maps(model, model_data, op_group)
 
     # * Plot charts for reservoir group breakdown for each basin
-    plot_basin_group_makeup()
+    # plot_basin_group_makeup()
+
+    # * Plot multicolored line plots
+    plot_res_group_colored_timeseries(model_results, model, model_data)
