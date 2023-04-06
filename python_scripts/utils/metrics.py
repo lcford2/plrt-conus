@@ -8,7 +8,9 @@ from sklearn.metrics import mean_squared_error, r2_score
 calc_type = Union[np.array, pd.Series]
 
 
-def nrmse(actual: calc_type, model: calc_type, handle_zero=True) -> float:
+def nrmse(
+    actual: calc_type, model: calc_type, divisor="mean", handle_zero=True
+) -> float:
     """Calculate normalized root mean square error
 
     MSE / E(actual)
@@ -16,16 +18,28 @@ def nrmse(actual: calc_type, model: calc_type, handle_zero=True) -> float:
     Args:
         actual (np.array | pd.Series): Array of actual values
         model (np.array | pd.Series): Array of model values
+        divisor (str, optional): How to calculate divisor for NRMSE. Options are:
+            ["mean", "median", "range", "std"]
         handle_zero (bool, optional): If True, will not divide by zero.
 
     Returns:
         float: NRMSE
     """
-    if handle_zero:
-        divisor = max([actual.mean(), 0.01])
+    if divisor == "mean":
+        div = actual.mean()
+    elif divisor == "median":
+        div = actual.median()
+    elif divisor == "range":
+        div = actual.max() - actual.min()
+    elif divisor == "std":
+        div = actual.std()
     else:
-        divisor = actual.mean()
-    return mean_squared_error(actual, model, squared=False) / divisor
+        raise ValueError("Invalid divisor")
+
+    if handle_zero:
+        div = max([div, 0.01])
+
+    return mean_squared_error(actual, model, squared=False) / div
 
 
 def nnse(actual: calc_type, model: calc_type) -> float:
@@ -114,7 +128,9 @@ def get_rmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Seri
     return scores
 
 
-def get_nrmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Series:
+def get_nrmse(
+    df: pd.DataFrame, actual: str, model: str, grouper=None, divisor="mean"
+) -> pd.Series:
     """Get NRMSE for df.
 
     If grouper is not None, will get NRMSE for each unique item in grouper
@@ -123,6 +139,8 @@ def get_nrmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Ser
         df (pd.DataFrame): Dataframe containing model records
         actual (str): Name of column containing actual records
         model (str): Name of column containing model records
+        divisor (str): How to calculate divisor for NRMSE. Options are:
+            ["mean", "median", "range", "std"]
         grouper (_type_, optional): mapping, function, label, or list of labels.
             Defaults to None.
 
@@ -130,10 +148,12 @@ def get_nrmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Ser
         pd.Series: NRMSE Values
     """
     if grouper is not None:
-        scores = df.groupby(grouper).apply(lambda x: nrmse(x[actual], x[model]))
+        scores = df.groupby(grouper).apply(
+            lambda x: nrmse(x[actual], x[model], divisor=divisor)
+        )
         scores.name = "RMSE"
     else:
-        scores = nrmse(df[actual], df[model])
+        scores = nrmse(df[actual], df[model], divisor=divisor)
     return scores
 
 

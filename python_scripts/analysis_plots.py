@@ -5,12 +5,14 @@ from collections import defaultdict
 from multiprocessing import cpu_count
 
 import geopandas as gpd
+import matplotlib as mpl
 import matplotlib.gridspec as mgridspec
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
 import pandas as pd
+import scienceplots  # noqa: F401
 import seaborn as sns
 from fit_plrt_model import get_params_and_groups
 from joblib import Parallel, delayed
@@ -25,11 +27,11 @@ from parameter_sweep_analysis import (
 from scipy.stats import zscore
 from utils.config import config
 from utils.io import load_feather, load_pickle, write_feather, write_pickle
-from utils.metrics import get_entropy
+from utils.metrics import get_entropy, get_nnse, get_nrmse
 from utils.plot_tools import determine_grid_size, get_tick_years
 from utils.utils import format_equation
 
-plt.rcParams["svg.fonttype"] = "none"
+# plt.rcParams["svg.fonttype"] = "none"
 
 CPUS = cpu_count()
 os.environ["OMP_NUM_THREADS"] = str(CPUS)
@@ -803,10 +805,138 @@ def plot_basin_group_entropy(
     plt.show()
 
 
+def plot_training_vs_testing_simul_perf(model_results, ax=None):
+    train_reservoirs = (
+        model_results["train_data"].index.get_level_values("res_id").unique()
+    )
+    test_reservoirs = (
+        model_results["test_data"].index.get_level_values("res_id").unique()
+    )
+    simmed_data = model_results["simmed_data"]
+
+    nnse = get_nnse(simmed_data, "actual", "model", "res_id")
+    nrmse = get_nrmse(simmed_data, "actual", "model", "res_id", "range")
+
+    dset = pd.Series("train", index=train_reservoirs)
+    dset = pd.concat([dset, pd.Series("test", index=test_reservoirs)])
+    df = pd.DataFrame.from_dict({"nNSE": nnse, "nRMSE": nrmse, "Dataset": dset})
+    df = df.fillna("test")
+
+    if ax:
+        show = False
+    else:
+        show = True
+        ax = plt.gca()
+
+    train_df = df[df["Dataset"] == "train"]
+    test_df = df[df["Dataset"] == "test"]
+
+    ax.scatter(
+        train_df["nNSE"],
+        train_df["nRMSE"],
+        label="Training Reservoir",
+        edgecolor="k",
+        linewidths=0.5,
+    )
+    ax.scatter(
+        test_df["nNSE"],
+        test_df["nRMSE"],
+        label="Testing Reservoir",
+        edgecolor="k",
+        marker="X",
+        linewidths=0.5,
+        zorder=10,
+    )
+    # ax = sns.scatterplot(
+    #     data=df,
+    #     x="nNSE",
+    #     y="nRMSE",
+    #     hue="Dataset",
+    #     style="Dataset",
+    #     hue_order=["train", "test"],
+    #     style_order=["train", "test"],
+    #     legend="full",
+    #     edgecolor="k",
+    #     **kwargs,
+    # )
+
+    ax.legend(loc="best")
+    if show:
+        plt.show()
+
+
+def plot_experimental_dset_sim_perf():
+    model_paths = [
+        "TD6_MSS0.03_SM_meta_rts_0.8",
+        "TD6_MSS0.03_SM_meta_rts_-0.2",
+        "TD6_MSS0.03_SM_meta_max_sto_0.8",
+        "TD6_MSS0.03_SM_meta_max_sto_-0.2",
+        "TD6_MSS0.03_SM_meta_rel_inf_corr_0.8",
+        "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.2",
+    ]
+
+    titles = [
+        r"Upper 20\% $RT$",
+        r"Lower 20\% $RT$",
+        r"Upper 20\% $S_{max}$",
+        r"Lower 20\% $S_{max}$",
+        r"Upper 20\% $r(D_t, NI_t)$",
+        r"Lower 20\% $r(D_t, NI_t)$",
+    ]
+    width = 12
+    height = 10
+    fig, axes = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(width, height))
+    label_args = [
+        {"label_x": False, "label_y": True, "legend": True},
+        {"label_x": False, "label_y": False, "legend": False},
+        {"label_x": False, "label_y": True, "legend": False},
+        {"label_x": False, "label_y": False, "legend": False},
+        {"label_x": True, "label_y": True, "legend": False},
+        {"label_x": True, "label_y": False, "legend": False},
+    ]
+
+    plot_iterator = zip(model_paths, axes.flatten(), titles, label_args)
+    for model_path, ax, title, label_arg in plot_iterator:
+        full_model_path = (
+            config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path
+        )
+        model_results = load_model_results(full_model_path)
+        plot_training_vs_testing_simul_perf(model_results, ax=ax)
+        if not label_arg["label_x"]:
+            ax.set_xlabel("")
+        if not label_arg["label_y"]:
+            ax.set_ylabel("")
+        if not label_arg["legend"]:
+            ax.get_legend().remove()
+        ax.set_title(title)
+    plt.subplots_adjust(
+        top=0.7, bottom=0.11, left=0.2, right=0.8, hspace=0.15, wspace=0.05
+    )
+    plt.savefig(
+        os.path.expanduser(
+            "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
+            "nnse_vs_nrmse.svg"
+        ),
+        format="svg",
+        dpi=1200,
+    )
+    # plt.show()
+
+
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
-    sns.set_context("talk", font_scale=1.1)
-    plt.style.use("tableau-colorblind10")
+    plt.style.use(["science", "nature"])
+    sns.set_context("notebook", font_scale=1.0)
+    mpl.rcParams["xtick.major.size"] = 8
+    mpl.rcParams["xtick.major.width"] = 1
+    mpl.rcParams["xtick.minor.size"] = 4
+    mpl.rcParams["xtick.minor.width"] = 1
+    mpl.rcParams["ytick.major.size"] = 8
+    mpl.rcParams["ytick.major.width"] = 1
+    mpl.rcParams["ytick.minor.size"] = 4
+    mpl.rcParams["ytick.minor.width"] = 1
+    mpl.rcParams["axes.linewidth"] = 1.5
+    # plt.style.use("tableau-colorblind10")
     # args, remaining = parse_args()
     # func_args = parse_unknown_args(remaining)
 
@@ -851,4 +981,8 @@ if __name__ == "__main__":
     # plot_res_group_colored_timeseries(model_results, model, model_data)
 
     # * Plot basin group variance map
-    plot_basin_group_entropy(model, model_data, op_group="Very Large", plot_res=False)
+    # plot_basin_group_entropy(model, model_data, op_group="Very Large", plot_res=False)
+
+    # * Plot training vs testing simul performance
+    # plot_training_vs_testing_simul_perf(model_results)
+    plot_experimental_dset_sim_perf()

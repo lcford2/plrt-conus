@@ -1634,7 +1634,7 @@ if __name__ == "__main__":
     #     monthly_group=False,
     #     plot_pairs=False
     # )
-    plot_basin_mean_performance(model_results, **func_args)
+    # plot_basin_mean_performance(model_results, **func_args)
     # plot_basin_mean_performance_dset_tile(model_results, **func_args)
     # plot_leave_out_performance_comparisons(model_path)
-    # plot_all_leave_out_performance_comparisons()
+    plot_all_leave_out_performance_comparisons()

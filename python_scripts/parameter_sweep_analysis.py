@@ -1,3 +1,4 @@
+import glob
 import pathlib
 from collections import defaultdict
 
@@ -215,6 +216,52 @@ def plot_metric_box_plot(metric_df: pd.DataFrame, metric: str, resers=None) -> N
     if metric == "NNSE":
         ax.axhline(0.5)
     ax.legend(title="MSS", loc="lower left", ncol=5)
+    plt.show()
+
+
+def plot_metric_scatter_plots(metrics) -> None:
+    """Scatter plots where X is tree depth, y is the metric, and points are
+        colored by MSS
+
+    Args:
+        metric_df (pd.DataFrame): Metric dataframe to plot
+        metric (str): Name of metric to plot
+    """
+    df = metric_wide_to_long(metrics["nnse"], "NNSE", keep_index=True)
+    dsets = load_pickle("./model_setup_files/test_train_basin_0.8.pickle")
+
+    train, test = [], []
+    for _, tres in dsets[0].items():
+        train.extend(tres)
+
+    for _, tres in dsets[1].items():
+        test.extend(tres)
+
+    dset = pd.Series(index=df["res_id"], dtype=str)
+    for res in train:
+        dset.loc[res] = "train"
+    for res in test:
+        dset.loc[res] = "test"
+
+    df["dset"] = dset.reset_index()[0]
+
+    sns.catplot(
+        data=df,
+        x="MSS",
+        y="NNSE",
+        hue="dset",
+        col="TD",
+        col_wrap=3,
+        kind="box",
+        whis=(10, 90),
+        showfliers=False,
+        legend_out=False,
+    )
+    # ax = fg.ax
+
+    # if metric == "NNSE":
+    #     ax.axhline(0.5)
+    # ax.legend(title="MSS", loc="lower left", ncol=5)
     plt.show()
 
 
@@ -860,7 +907,7 @@ def find_similar_groups(op_groups, filter_zero=True):
 
 
 if __name__ == "__main__":
-    sns.set_theme(context="talk", palette="Set2")
+    sns.set_theme(context="paper", palette="Set2")
 
     model_dir = config.get_dir("results") / "monthly_merged_data_set_minyr3"
     model = "TD6_MSS0.03_SM_basin_0.8"
@@ -876,27 +923,32 @@ if __name__ == "__main__":
     # translate_tree_splitting_values(model_dir / model)
     # plot_metric_box_plot(metrics["nnse"], "NNSE")
     # * If you want to get all results from each model
-    # results = load_model_results_from_list(model_dir.iterdir())
-    # simmed_data = get_data_from_results(results, dataset="simmed")
+    models = glob.glob(str(model_dir / "TD?_MSS?.??_SM_basin*"))
+    results = load_model_results_from_list(models)
+    simmed_data = get_data_from_results(results, dataset="simmed")
     # get_model_rank_scores(results, "NNSE")
-    # metrics = calculate_metrics(simmed_data, data_set="simmed", recalc=False)
+    metrics = calculate_metrics(
+        simmed_data, data_set="simmed", metrics=("nnse", "nrmse"), recalc=False
+    )
+
     # plot_metric_box_plot(metrics["nnse"], "NNSE", resers=test_resers)
+    plot_metric_scatter_plots(metrics)
 
     # make_parameter_sweep_comparison(metrics, "nnse")
 
     # * To get results from a single model
-    results = load_model_results(model_dir / model)
-    df = results["simmed_data"]
-    df = df.loc[pd.IndexSlice[test_resers, :], :]
-    df = df.rename(columns={"model": "simmed"})
-    df["test"] = results["test_data"]["model"]
-    # plot_single_model_metrics(df)
-    op_groups = find_operational_groups(results)
-    sim_groups = find_similar_groups(op_groups)
-    sim_groups = sorted(sim_groups, key=lambda x: x[-1])
-    from IPython import embed as II
+    # results = load_model_results(model_dir / model)
+    # df = results["simmed_data"]
+    # df = df.loc[pd.IndexSlice[test_resers, :], :]
+    # df = df.rename(columns={"model": "simmed"})
+    # df["test"] = results["test_data"]["model"]
+    # # plot_single_model_metrics(df)
+    # op_groups = find_operational_groups(results)
+    # sim_groups = find_similar_groups(op_groups)
+    # sim_groups = sorted(sim_groups, key=lambda x: x[-1])
+    # from IPython import embed as II
 
-    II()
+    # II()
 
     # compare_training_testing_data(results, int(min_years))
     # plot_training_testing_map(results, min_years)
