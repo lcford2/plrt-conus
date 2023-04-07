@@ -19,12 +19,14 @@ images = [
     ]
 ]
 
+imgs = [Image.open(i) for i in images]
 
 # left, upper, right, lower
-sz = [0, 0, 1920, 972]
-s2n = 200
-s2e = 285
-t2e = 60
+sz = [0, 0, *imgs[0].size]
+print(sz)
+s2n = 0
+s2e = 410
+t2e = 190
 
 bounds = [
     [sz[0] + s2n, sz[1], sz[2] - s2e, sz[3] - t2e],
@@ -34,9 +36,8 @@ bounds = [
     [sz[0] + s2e, sz[1] + t2e, sz[2] - s2n, sz[3]],
 ]
 
-imgs = [Image.open(i) for i in images]
 
-extra_labels_img = imgs[2].crop([sz[0] + s2e + (s2e - s2n), 910, sz[2] - s2n, sz[3]])
+extra_labels_img = imgs[2].crop([sz[0] + s2e + (s2e - s2n), 2900, sz[2] - s2n, sz[3]])
 
 crop = True
 if crop:
@@ -54,7 +55,7 @@ im.save(image_path / "stitched_maps.png", compress_level=0, dpi=(450, 450))
 
 legend = Image.open(image_path / "scaled_basin_mean_entropy_legend.png")
 
-new_width = int(empty.shape[1] * 0.85)
+new_width = int(empty.shape[1] * 0.98)
 new_height = int(legend.size[1] / legend.size[0] * new_width)
 legend = legend.resize((new_width, new_height))
 legend_size = np.array(legend).shape

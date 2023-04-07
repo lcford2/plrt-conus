@@ -840,8 +840,8 @@ def plot_basin_group_entropy(
     # * doing the above for each group gives the following full bounds
     if scale:
         # * if scaling by log2(k)
-        min_score = 0.15993214259879698
-        max_score = 0.6384038760490894
+        min_score = 0.23073330900603095
+        max_score = 0.9210221060603138
     else:
         min_score = 0.4134185912778788
         max_score = 1.6364994773122774
@@ -865,16 +865,7 @@ def plot_basin_group_entropy(
         53.382373,
     )
 
-    # fig = plt.figure()
-    # gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
-    # ax = fig.add_subplot(gs[0, 0])
-    # cbar_ax = fig.add_subplot(gs[:, 1])
-
-    # gs = mgridspec.GridSpec(2, 1, figure=fig, height_ratios=[20, 1])
-    # ax = fig.add_subplot(gs[0, 0])
-    # cbar_ax = fig.add_subplot(gs[1, :])
-    fig, ax = plt.subplots(1, 1)
-    cbar_fig, cbar_ax = plt.subplots(1, 1)
+    fig, ax = plt.subplots(1, 1, figsize=(12, 10))
     ax.tick_params(
         axis="both",
         which="minor",
@@ -904,22 +895,41 @@ def plot_basin_group_entropy(
                 sizes=res_huc2.loc[resers, "entropy"].values * 50,
             )
     x, y = maps[0](-80, 51)
-    ax.text(x, y, op_group, fontsize=20, ha="center", va="center")
+    ax.text(x, y, op_group, fontsize=24, ha="center", va="center")
 
-    if scale:
-        label = r"Mean Operational Mode Entropy [\%]"
-    else:
-        label = "Mean Operational Mode Entropy  [bits]"
-    plt.colorbar(
-        ScalarMappable(norm=norm, cmap=cmap),
-        cax=cbar_ax,
-        orientation="horizontal",
-        label=label,
-        aspect=4,
-        shrink=0.8,
-        # format=lambda x, _: f"{x:.0%}"
+    # if scale:
+    #     label = r"Mean Operational Mode Entropy [%]"
+    # else:
+    #     label = "Mean Operational Mode Entropy  [bits]"
+    # cbar_fig, cbar_ax = plt.subplots(1, 1)
+    # plt.colorbar(
+    #     ScalarMappable(norm=norm, cmap=cmap),
+    #     cax=cbar_ax,
+    #     orientation="horizontal",
+    #     label=label,
+    #     aspect=4,
+    #     shrink=0.8,
+    #     format=lambda x, _: f"{x:.0%}"
+    # )
+    # plt.show()
+    file_name = {
+        "Small, Mid RT": "small_mid_rt.png",
+        "Medium, Mid RT": "medium_mid_rt.png",
+        "Medium, High RT": "medium_high_rt.png",
+        "Large": "large.png",
+        "Very Large": "very_large.png",
+    }[op_group]
+    outdir = os.path.expanduser(
+        "~/Dropbox/plrt-conus-figures/good_figures/op_group_analysis/"
+        "op_group_entropy_maps"
     )
-    plt.show()
+    if scale:
+        file_name = "scaled_" + file_name
+        output_file = f"{outdir}/scaled/{file_name}"
+    else:
+        output_file = f"{outdir}/raw/{file_name}"
+
+    plt.savefig(output_file, dpi=450, bbox_inches="tight")
 
 
 def plot_training_vs_testing_simul_perf(model_results, ax=None):
@@ -1084,7 +1094,7 @@ def transition_probabilities(model, model_data):
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
     # plt.style.use(["science", "nature"])
-    sns.set_context("talk", font_scale=1.1)
+    sns.set_context("talk", font_scale=1.3)
     # mpl.rcParams["xtick.major.size"] = 8
     # mpl.rcParams["xtick.major.width"] = 1
     # mpl.rcParams["xtick.minor.size"] = 4
