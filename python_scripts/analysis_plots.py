@@ -309,7 +309,7 @@ def plot_seasonal_operations(model, model_data, polar=False):
         3,
         sharex=False,
         sharey=True,
-        figsize=(12, 8),
+        figsize=(16, 10),
         subplot_kw=dict(projection="polar") if polar else None,
     )
     axes = axes.flatten()
@@ -343,7 +343,7 @@ def plot_seasonal_operations(model, model_data, polar=False):
             )
             ax.set_title(title)
             ax.set_xticks(range(0, 12))
-            ax.set_xticklabels(calendar.month_abbr[1:])
+            ax.set_xticklabels(calendar.month_abbr[1:], rotation=90)
             ax.tick_params(
                 axis="both",
                 which="minor",
@@ -387,7 +387,15 @@ def plot_seasonal_operations(model, model_data, polar=False):
         loc="center",
         frameon=True,
     )
-
+    plt.subplots_adjust(
+        top=0.90, bottom=0.1, left=0.068, right=0.989, hspace=0.318, wspace=0.051
+    )
+    plt.savefig(
+        "/home/lucas/Dropbox/plrt-conus-figures/good_figures/op_group_analysis/"
+        "seasonal_bar_charts/all_groups_seasonal_percentages.png",
+        dpi=450,
+        bbox_inches="tight",
+    )
     plt.show()
 
 
@@ -1046,6 +1054,7 @@ def plot_experimental_dset_sim_perf():
         ),
         format="svg",
         dpi=1200,
+        bbox_inches="tight",
     )
     # plt.show()
 
@@ -1094,7 +1103,7 @@ def transition_probabilities(model, model_data):
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
     # plt.style.use(["science", "nature"])
-    sns.set_context("talk", font_scale=1.3)
+    sns.set_context("notebook", font_scale=1.5)
     # mpl.rcParams["xtick.major.size"] = 8
     # mpl.rcParams["xtick.major.width"] = 1
     # mpl.rcParams["xtick.minor.size"] = 4
@@ -1133,7 +1142,7 @@ if __name__ == "__main__":
     # get_basin_op_mode_breakdown()
 
     # * plot seasonal operations for all TV groups
-    # plot_seasonal_operations(model, model_data, polar=False)
+    plot_seasonal_operations(model, model_data, polar=False)
 
     # * get seasonal operations for a specific group
     # plot_basin_specific_seasonal_operations(model, model_data, "Medium, High RT")
@@ -1152,9 +1161,9 @@ if __name__ == "__main__":
     # plot_res_group_colored_timeseries(model_results, model, model_data)
 
     # * Plot basin group variance map
-    for group in TIME_VARYING_GROUPS:
-        print(f"\n{group}\n")
-        plot_basin_group_entropy(model, model_data, op_group=group, plot_res=False)
+    # for group in TIME_VARYING_GROUPS:
+    #     print(f"\n{group}\n")
+    #     plot_basin_group_entropy(model, model_data, op_group=group, plot_res=False)
 
     # * Plot training vs testing simul performance
     # plot_training_vs_testing_simul_perf(model_results)
