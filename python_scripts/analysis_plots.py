@@ -6,7 +6,7 @@ from multiprocessing import cpu_count
 
 import geopandas as gpd
 import matplotlib as mpl  # noqa: F401
-import matplotlib.gridspec as mgridspec
+import matplotlib.gridspec as mgridspec  # noqa: F401
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
@@ -16,7 +16,7 @@ import scienceplots  # noqa: F401
 import seaborn as sns
 from fit_plrt_model import get_params_and_groups
 from joblib import Parallel, delayed
-from matplotlib.cm import ScalarMappable, get_cmap
+from matplotlib.cm import ScalarMappable, get_cmap  # noqa: F401
 from matplotlib.colors import ListedColormap, Normalize
 from palettable import colorbrewer
 from parameter_sweep_analysis import (
@@ -804,6 +804,7 @@ def plot_basin_group_entropy(
     model,
     model_data,
     op_group="all",
+    scale=True,
     plot_res=False,
 ):
     groups = get_all_res_groups(model, model_data)
@@ -825,7 +826,7 @@ def plot_basin_group_entropy(
     # get grand database
     grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
 
-    scores = get_entropy(groups, "res_id")
+    scores = get_entropy(groups, "res_id", scale=scale)
 
     resers = scores.index
     res_huc2 = res_huc2.loc[resers]
@@ -837,8 +838,13 @@ def plot_basin_group_entropy(
     # min_score = scores["entropy"].min()
     # print(min_score, max_score)
     # * doing the above for each group gives the following full bounds
-    min_score = 7.232680092715224
-    max_score = 9.443074543432123
+    if scale:
+        # * if scaling by log2(k)
+        min_score = 0.15993214259879698
+        max_score = 0.6384038760490894
+    else:
+        min_score = 0.4134185912778788
+        max_score = 1.6364994773122774
 
     score_range = max_score - min_score
 
@@ -859,15 +865,24 @@ def plot_basin_group_entropy(
         53.382373,
     )
 
-    fig = plt.figure()
+    # fig = plt.figure()
     # gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
     # ax = fig.add_subplot(gs[0, 0])
     # cbar_ax = fig.add_subplot(gs[:, 1])
 
-    gs = mgridspec.GridSpec(2, 1, figure=fig, height_ratios=[20, 1])
-    ax = fig.add_subplot(gs[0, 0])
-    cbar_ax = fig.add_subplot(gs[1, :])
-
+    # gs = mgridspec.GridSpec(2, 1, figure=fig, height_ratios=[20, 1])
+    # ax = fig.add_subplot(gs[0, 0])
+    # cbar_ax = fig.add_subplot(gs[1, :])
+    fig, ax = plt.subplots(1, 1)
+    cbar_fig, cbar_ax = plt.subplots(1, 1)
+    ax.tick_params(
+        axis="both",
+        which="minor",
+        left=False,
+        bottom=False,
+        top=False,
+        right=False,
+    )
     m = setup_map(coords=[west, south, east, north], other_bound=other_bounds, ax=ax)
     maps = [m]
 
@@ -888,14 +903,21 @@ def plot_basin_group_entropy(
                 zorder=4,
                 sizes=res_huc2.loc[resers, "entropy"].values * 50,
             )
+    x, y = maps[0](-80, 51)
+    ax.text(x, y, op_group, fontsize=20, ha="center", va="center")
 
+    if scale:
+        label = r"Mean Operational Mode Entropy [\%]"
+    else:
+        label = "Mean Operational Mode Entropy  [bits]"
     plt.colorbar(
         ScalarMappable(norm=norm, cmap=cmap),
         cax=cbar_ax,
         orientation="horizontal",
-        label="Basin Mean Op. Group Entropy",
+        label=label,
         aspect=4,
         shrink=0.8,
+        # format=lambda x, _: f"{x:.0%}"
     )
     plt.show()
 
@@ -1061,8 +1083,8 @@ def transition_probabilities(model, model_data):
 
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
-    plt.style.use(["science", "nature"])
-    sns.set_context("notebook", font_scale=1.1)
+    # plt.style.use(["science", "nature"])
+    sns.set_context("talk", font_scale=1.1)
     # mpl.rcParams["xtick.major.size"] = 8
     # mpl.rcParams["xtick.major.width"] = 1
     # mpl.rcParams["xtick.minor.size"] = 4
@@ -1120,11 +1142,13 @@ if __name__ == "__main__":
     # plot_res_group_colored_timeseries(model_results, model, model_data)
 
     # * Plot basin group variance map
-    # plot_basin_group_entropy(model, model_data, op_group="Very Large", plot_res=False)
+    for group in TIME_VARYING_GROUPS:
+        print(f"\n{group}\n")
+        plot_basin_group_entropy(model, model_data, op_group=group, plot_res=False)
 
     # * Plot training vs testing simul performance
     # plot_training_vs_testing_simul_perf(model_results)
     # plot_experimental_dset_sim_perf()
 
     # * Transition probabilities
-    transition_probabilities(model, model_data)
+    # transition_probabilities(model, model_data)
