@@ -5,7 +5,7 @@ from collections import defaultdict
 from multiprocessing import cpu_count
 
 import geopandas as gpd
-import matplotlib as mpl
+import matplotlib as mpl  # noqa: F401
 import matplotlib.gridspec as mgridspec
 import matplotlib.patches as mpatch
 import matplotlib.pyplot as plt
@@ -18,6 +18,7 @@ from fit_plrt_model import get_params_and_groups
 from joblib import Parallel, delayed
 from matplotlib.cm import ScalarMappable, get_cmap
 from matplotlib.colors import ListedColormap, Normalize
+from palettable import colorbrewer
 from parameter_sweep_analysis import (
     get_contiguous_wbds,
     load_model_file,
@@ -28,7 +29,7 @@ from scipy.stats import zscore
 from utils.config import config
 from utils.io import load_feather, load_pickle, write_feather, write_pickle
 from utils.metrics import get_entropy, get_nnse, get_nrmse
-from utils.plot_tools import determine_grid_size, get_tick_years
+from utils.plot_tools import custom_bar_chart, determine_grid_size, get_tick_years
 from utils.utils import format_equation
 
 # plt.rcParams["svg.fonttype"] = "none"
@@ -294,6 +295,100 @@ def get_res_seasonal_operations(model, model_data, op_group):
     props = counts.divide(counts.sum(axis=1), axis=0)
     props = props.stack().reset_index().rename(columns={"level_2": "group", 0: "prop"})
     return props
+
+
+def plot_seasonal_operations(model, model_data, polar=False):
+    large = get_res_seasonal_operations(model, model_data, "Large")
+    very_large = get_res_seasonal_operations(model, model_data, "Very Large")
+    med_mid_rt = get_res_seasonal_operations(model, model_data, "Medium, Mid RT")
+    med_high_rt = get_res_seasonal_operations(model, model_data, "Medium, High RT")
+    sml_mid_rt = get_res_seasonal_operations(model, model_data, "Small, Mid RT")
+
+    fig, axes = plt.subplots(
+        2,
+        3,
+        sharex=False,
+        sharey=True,
+        figsize=(12, 8),
+        subplot_kw=dict(projection="polar") if polar else None,
+    )
+    axes = axes.flatten()
+
+    plot_args = zip(
+        [sml_mid_rt, med_mid_rt, med_high_rt, large, very_large],
+        [
+            "Small, Mid RT",
+            "Medium, Mid RT",
+            "Medium, High RT",
+            "Large",
+            "Very Large",
+        ],
+        axes[:5],
+    )
+    all_groups = [3, 4, 5, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+    color_palette = colorbrewer.qualitative.Paired_12.mpl_colors
+    group_colors = {j: color_palette[i] for i, j in enumerate(all_groups)}
+
+    for df, title, ax in plot_args:
+        prop_df = df.groupby(["date", "group"])["prop"]
+        prop = prop_df.mean().unstack()
+        # q1 = prop_df.quantile(0.25).unstack()
+        # q3 = prop_df.quantile(0.75).unstack()
+        # error = {
+        #     g: np.vstack([q1[g], q3[g]]) for g in prop.columns
+        # }
+        if not polar:
+            custom_bar_chart(
+                prop, width=0.85, ax=ax, colors=group_colors, edgecolor="k"
+            )
+            ax.set_title(title)
+            ax.set_xticks(range(0, 12))
+            ax.set_xticklabels(calendar.month_abbr[1:])
+            ax.tick_params(
+                axis="both",
+                which="minor",
+                top=False,
+                right=False,
+                bottom=False,
+                left=False,
+            )
+            ax.tick_params(
+                axis="both",
+                which="major",
+                top=False,
+                right=False,
+                bottom=False,
+            )
+            ax.spines.right.set_visible(False)
+            ax.spines.top.set_visible(False)
+        else:
+            for group in prop.columns:
+                ax.plot(
+                    np.deg2rad(np.arange(0, 360, 30)),
+                    prop[group].values,
+                    color=group_colors[group],
+                    label=group,
+                )
+
+    fig.text(
+        0.02,
+        0.5,
+        "Average Operational Mode Occurence Proportion",
+        va="center",
+        rotation="vertical",
+    )
+    handles = [mpatch.Patch(color=group_colors[i]) for i in all_groups]
+    axes[-1].axis("off")
+    axes[-1].legend(
+        handles,
+        all_groups,
+        ncol=4,
+        title="Operational Mode",
+        loc="center",
+        frameon=True,
+    )
+
+    plt.show()
 
 
 def plot_basin_specific_seasonal_operations(model, model_data, op_group):
@@ -923,19 +1018,60 @@ def plot_experimental_dset_sim_perf():
     # plt.show()
 
 
+def transition_probabilities(model, model_data):
+    groups = get_all_res_groups(model, model_data)
+    res_op_groups = load_feather(
+        config.get_dir("agg_results") / "best_model_op_groups.feather",
+        index_keys=["res_id"],
+    ).drop("index", axis=1)
+
+    res_op_groups = res_op_groups.replace(
+        {
+            "Large 1": "Large",
+            "Large 2": "Large",
+            "Large 3": "Large",
+        }
+    )
+    resers = res_op_groups[res_op_groups["op_group"].isin(TIME_VARYING_GROUPS)].index
+    groups = groups.loc[pd.IndexSlice[resers, :]]
+    groups.name = "group"
+    groups = groups.to_frame()
+    groups["lagged"] = groups.groupby("res_id")["group"].shift(1)
+    next_counts = groups.groupby(["res_id", "group"])["lagged"].value_counts()
+    next_props = next_counts.groupby(["res_id", "group"], group_keys=False).apply(
+        lambda x: x / x.sum()
+    )
+    next_props.name = "t_prob"
+    next_props = next_props.to_frame()
+    next_props["op_group"] = [
+        res_op_groups.loc[i, "op_group"] for i in next_props.index.get_level_values(0)
+    ]
+    t_probs = next_props.groupby(["op_group", "group", "lagged"]).mean()
+
+    fig, axes = plt.subplots(2, 3, figsize=(12, 8))
+    axes = axes.flatten()
+    for group, ax in zip(TIME_VARYING_GROUPS, axes):
+        sns.heatmap(t_probs.loc[pd.IndexSlice[group]].unstack().T, ax=ax, annot=True)
+        ax.set_title(group)
+        ax.set_xlabel("")
+        ax.set_ylabel("")
+
+    plt.show()
+
+
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
     plt.style.use(["science", "nature"])
-    sns.set_context("notebook", font_scale=1.0)
-    mpl.rcParams["xtick.major.size"] = 8
-    mpl.rcParams["xtick.major.width"] = 1
-    mpl.rcParams["xtick.minor.size"] = 4
-    mpl.rcParams["xtick.minor.width"] = 1
-    mpl.rcParams["ytick.major.size"] = 8
-    mpl.rcParams["ytick.major.width"] = 1
-    mpl.rcParams["ytick.minor.size"] = 4
-    mpl.rcParams["ytick.minor.width"] = 1
-    mpl.rcParams["axes.linewidth"] = 1.5
+    sns.set_context("notebook", font_scale=1.1)
+    # mpl.rcParams["xtick.major.size"] = 8
+    # mpl.rcParams["xtick.major.width"] = 1
+    # mpl.rcParams["xtick.minor.size"] = 4
+    # mpl.rcParams["xtick.minor.width"] = 1
+    # mpl.rcParams["ytick.major.size"] = 8
+    # mpl.rcParams["ytick.major.width"] = 1
+    # mpl.rcParams["ytick.minor.size"] = 4
+    # mpl.rcParams["ytick.minor.width"] = 1
+    # mpl.rcParams["axes.linewidth"] = 1.5
     # plt.style.use("tableau-colorblind10")
     # args, remaining = parse_args()
     # func_args = parse_unknown_args(remaining)
@@ -964,6 +1100,9 @@ if __name__ == "__main__":
     # * get breakdown of reservoirs per mode per basin
     # get_basin_op_mode_breakdown()
 
+    # * plot seasonal operations for all TV groups
+    # plot_seasonal_operations(model, model_data, polar=False)
+
     # * get seasonal operations for a specific group
     # plot_basin_specific_seasonal_operations(model, model_data, "Medium, High RT")
 
@@ -985,4 +1124,7 @@ if __name__ == "__main__":
 
     # * Plot training vs testing simul performance
     # plot_training_vs_testing_simul_perf(model_results)
-    plot_experimental_dset_sim_perf()
+    # plot_experimental_dset_sim_perf()
+
+    # * Transition probabilities
+    transition_probabilities(model, model_data)

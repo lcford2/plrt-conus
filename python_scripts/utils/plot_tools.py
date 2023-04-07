@@ -82,3 +82,57 @@ def get_tick_years(index, ax):
         for i in tick_years
     ]
     return tick_years, ticks
+
+
+def custom_bar_chart(data, width=0.8, ax=None, colors=None, error=None, **kwargs):
+    """Create a custom bar chart with multiple groups.
+
+    Args:
+        data (pd.DataFrame): dataframe with data to plot. Index is x-axis,
+            columns are groups.
+        width (float, optional): Proportion of available space to use for each cluster.
+            Defaults to 0.8.
+        ax (Axes, optional): Axes to plot on. If none, gets current axes.
+            Defaults to None.
+        colors (dict, optional): Dictionary of colors for each group. Defaults to None.
+        error (dict, optional): Dictionary of error bars to plot. Defaults to None.
+    """
+    show = False
+    if not ax:
+        show = True
+        ax = plt.gca()
+
+    x = data.index
+    xticks = np.arange(len(x))
+
+    groups = data.columns
+    ngroup = len(groups)
+    bar_width = width / ngroup
+
+    if ngroup % 2 == 0:
+        offset_multipliers = np.array([i - ngroup // 2 + 0.5 for i in range(ngroup)])
+    else:
+        offset_multipliers = np.array([i - ngroup // 2 for i in range(ngroup)])
+
+    offsets = bar_width * offset_multipliers
+
+    for group, offset in zip(groups, offsets):
+        ax.bar(
+            xticks + offset,
+            data[group],
+            width=bar_width,
+            color=colors[group] if colors else None,
+            **kwargs
+        )
+        if error is not None:
+            ax.errorbar(
+                xticks + offset,
+                data[group],
+                yerr=error[group],
+                fmt="none",
+                capsize=1,
+                color="k",
+            )
+
+    if show:
+        plt.show()
