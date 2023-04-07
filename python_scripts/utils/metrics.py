@@ -193,14 +193,14 @@ def get_entropy(values: pd.Series, grouper=None, scale=False) -> pd.Series:
     """
     if grouper is not None:
         probs = values.groupby("res_id").apply(lambda x: x.value_counts() / x.count())
-        scores = probs.groupby(grouper).apply(entropy)
+        scores = probs.groupby(grouper).apply(entropy, base=2)
         if scale:
             ngroups = probs.index.get_level_values(1).unique().size
             scores = scores / np.log2(ngroups)
         scores.name = "entropy"
     else:
         probs = values.value_counts() / values.count()
-        scores = entropy(values)
+        scores = entropy(values, base=2)
         if scale:
             scores = scores / np.log2(probs.shape[0])
     return scores
