@@ -5,45 +5,54 @@ from PIL import Image
 
 image_path = pathlib.Path(
     "/home/lucas/Dropbox/plrt-conus-figures/good_figures/"
-    "op_group_analysis/op_group_entropy_maps"
+    "op_group_analysis/op_group_entropy_maps/scaled"
 )
 
 images = [
     image_path / i
     for i in [
-        "small_mid_rt.png",
-        "medium_mid_rt.png",
-        "medium_high_rt.png",
-        "large.png",
-        "very_large.png",
+        "scaled_small_mid_rt.png",
+        "scaled_medium_mid_rt.png",
+        "scaled_medium_high_rt.png",
+        "scaled_large.png",
+        "scaled_very_large.png",
     ]
 ]
 
 
 # left, upper, right, lower
-# (0, 0, 1920, 972),
+sz = [0, 0, 1920, 972]
+s2n = 200
+s2e = 285
+t2e = 60
+
 bounds = [
-    (310, 0, 1525, 772),
-    (400, 0, 1525, 772),
-    (395, 0, 1620, 772),
-    (310, 60, 1520, 832),
-    (395, 60, 1625, 832),
+    [sz[0] + s2n, sz[1], sz[2] - s2e, sz[3] - t2e],
+    [sz[0] + s2e, sz[1], sz[2] - s2e, sz[3] - t2e],
+    [sz[0] + s2e, sz[1], sz[2] - s2n, sz[3] - t2e],
+    [sz[0] + s2n, sz[1] + t2e, sz[2] - s2e, sz[3]],
+    [sz[0] + s2e, sz[1] + t2e, sz[2] - s2n, sz[3]],
 ]
 
-cropped = []
-for i in range(len(images)):
-    im = Image.open(images[i])
-    cropped.append(im.crop(bounds[i]))
+imgs = [Image.open(i) for i in images]
 
-empty = np.zeros_like(cropped[1]) + 255
-row1 = np.hstack(cropped[:3])
-row2 = np.hstack([*cropped[3:], empty])
+extra_labels_img = imgs[2].crop([sz[0] + s2e + (s2e - s2n), 910, sz[2] - s2n, sz[3]])
+
+crop = True
+if crop:
+    imgs = [im.crop(b) for im, b in zip(imgs, bounds)]
+
+empty = np.zeros_like(imgs[1]) + 255
+label_insert = np.array(extra_labels_img)
+empty[: label_insert.shape[0], : label_insert.shape[1], :] = label_insert
+row1 = np.hstack(imgs[:3])
+row2 = np.hstack([*imgs[3:], empty])
 out = np.vstack([row1, row2])
 
 im = Image.fromarray(out)
 im.save(image_path / "stitched_maps.png", compress_level=0, dpi=(450, 450))
 
-legend = Image.open(image_path / "basin_mean_entropy_legend.png")
+legend = Image.open(image_path / "scaled_basin_mean_entropy_legend.png")
 
 new_width = int(empty.shape[1] * 0.85)
 new_height = int(legend.size[1] / legend.size[0] * new_width)
@@ -56,10 +65,10 @@ legend_start = [m - h for m, h in zip(middle_empty, half_legend_size)]
 empty[
     legend_start[0] : legend_start[0] + legend_size[0],
     legend_start[1] : legend_start[1] + legend_size[1],
-    :3,
+    :,
 ] = np.array(legend)
 
-row2_w_legend = np.hstack([*cropped[3:], empty])
+row2_w_legend = np.hstack([*imgs[3:], empty])
 out = np.vstack([row1, row2_w_legend])
 
 im = Image.fromarray(out)

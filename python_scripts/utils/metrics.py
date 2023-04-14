@@ -178,7 +178,7 @@ def get_variance(values: pd.Series, grouper=None) -> pd.Series:
     return scores
 
 
-def get_entropy(values: pd.Series, grouper=None) -> pd.Series:
+def get_entropy(values: pd.Series, grouper=None, scale=False) -> pd.Series:
     """Get entropy of values.
 
     If grouper is not None, will get entropy for each unique item in grouper
@@ -192,10 +192,17 @@ def get_entropy(values: pd.Series, grouper=None) -> pd.Series:
         pd.Series: entropy values
     """
     if grouper is not None:
-        scores = values.groupby(grouper).apply(entropy)
+        probs = values.groupby("res_id").apply(lambda x: x.value_counts() / x.count())
+        scores = probs.groupby(grouper).apply(entropy)
+        if scale:
+            ngroups = probs.index.get_level_values(1).unique().size
+            scores = scores / np.log2(ngroups)
         scores.name = "entropy"
     else:
+        probs = values.value_counts() / values.count()
         scores = entropy(values)
+        if scale:
+            scores = scores / np.log2(probs.shape[0])
     return scores
 
 
