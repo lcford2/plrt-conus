@@ -44,5 +44,5 @@ def sorted_k_partitions(seq, k):
 
 def format_equation(param_vars, param_coefs):
     return " + ".join(
-        [f"{coef} {param_vars[var]}" for var, coef in param_coefs.items()]
+        [f"{coef} {param_vars[var]}" for var, coef in param_coefs.items()],
     )

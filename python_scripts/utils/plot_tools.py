@@ -122,7 +122,7 @@ def custom_bar_chart(data, width=0.8, ax=None, colors=None, error=None, **kwargs
             data[group],
             width=bar_width,
             color=colors[group] if colors else None,
-            **kwargs
+            **kwargs,
         )
         if error is not None:
             ax.errorbar(

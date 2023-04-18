@@ -9,7 +9,10 @@ calc_type = Union[np.array, pd.Series]
 
 
 def nrmse(
-    actual: calc_type, model: calc_type, divisor="mean", handle_zero=True
+    actual: calc_type,
+    model: calc_type,
+    divisor="mean",
+    handle_zero=True,
 ) -> float:
     """Calculate normalized root mean square error
 
@@ -120,7 +123,7 @@ def get_rmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Seri
     """
     if grouper is not None:
         scores = df.groupby(grouper).apply(
-            lambda x: mean_squared_error(x[actual], x[model], squared=False)
+            lambda x: mean_squared_error(x[actual], x[model], squared=False),
         )
         scores.name = "RMSE"
     else:
@@ -129,7 +132,11 @@ def get_rmse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Seri
 
 
 def get_nrmse(
-    df: pd.DataFrame, actual: str, model: str, grouper=None, divisor="mean"
+    df: pd.DataFrame,
+    actual: str,
+    model: str,
+    grouper=None,
+    divisor="mean",
 ) -> pd.Series:
     """Get NRMSE for df.
 
@@ -149,7 +156,7 @@ def get_nrmse(
     """
     if grouper is not None:
         scores = df.groupby(grouper).apply(
-            lambda x: nrmse(x[actual], x[model], divisor=divisor)
+            lambda x: nrmse(x[actual], x[model], divisor=divisor),
         )
         scores.name = "RMSE"
     else:
