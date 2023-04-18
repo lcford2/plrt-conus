@@ -83,7 +83,7 @@ def make_model_ready_data(df):
     for res, fix_vars in outlier_resers.items():
         for var in fix_vars:
             df.loc[pd.IndexSlice[res, :], var] = fix_outliers(
-                df.loc[pd.IndexSlice[res, :], var]
+                df.loc[pd.IndexSlice[res, :], var],
             )
     # get pre variables
     df[["storage_pre", "release_pre"]] = df.groupby("res_id")[
@@ -141,7 +141,8 @@ def make_model_ready_data(df):
     }
 
     write_pickle(
-        trimmed_resers, config.get_dir("data_to_sync") / "trimmed_resers.pickle"
+        trimmed_resers,
+        config.get_dir("data_to_sync") / "trimmed_resers.pickle",
     )
 
     for i, tdf in trimmed_dfs.items():

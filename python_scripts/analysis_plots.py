@@ -137,13 +137,14 @@ def find_operational_groups_for_res(model, model_data):
 
     records = pd.DataFrame.from_records(records, columns=["op_group", "res_id"])
     write_feather(
-        records, config.get_dir("agg_results") / "best_model_op_groups.feather"
+        records,
+        config.get_dir("agg_results") / "best_model_op_groups.feather",
     )
 
 
 def plot_operational_group_map(model_results):
     res_op_groups = load_pickle(
-        config.get_dir("agg_results") / "best_model_op_groups.pickle"
+        config.get_dir("agg_results") / "best_model_op_groups.pickle",
     )
     res_op_groups["Large"] = [
         *res_op_groups["Large 1"],
@@ -246,7 +247,7 @@ def get_coefficient_dataframe(model, model_data):
 
 def get_basin_op_mode_breakdown():
     res_op_groups = load_feather(
-        config.get_dir("agg_results") / "best_model_op_groups.feather"
+        config.get_dir("agg_results") / "best_model_op_groups.feather",
     )
     res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
     res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
@@ -282,11 +283,11 @@ def get_all_res_groups(model, model_data):
 def get_res_seasonal_operations(model, model_data, op_group):
     groups = get_all_res_groups(model, model_data)
     res_op_groups = load_feather(
-        config.get_dir("agg_results") / "best_model_op_groups.feather"
+        config.get_dir("agg_results") / "best_model_op_groups.feather",
     )
 
     res_op_groups["op_group"] = res_op_groups["op_group"].replace(
-        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"}
+        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"},
     )
 
     resers = res_op_groups[res_op_groups["op_group"] == op_group]["res_id"]
@@ -315,7 +316,7 @@ def plot_seasonal_operations(model, model_data, polar=False):
         sharex=False,
         sharey=True,
         figsize=(16, 10),
-        subplot_kw=dict(projection="polar") if polar else None,
+        subplot_kw={"projection": "polar"} if polar else None,
     )
     axes = axes.flatten()
 
@@ -344,7 +345,11 @@ def plot_seasonal_operations(model, model_data, polar=False):
         # }
         if not polar:
             custom_bar_chart(
-                prop, width=0.85, ax=ax, colors=group_colors, edgecolor="k"
+                prop,
+                width=0.85,
+                ax=ax,
+                colors=group_colors,
+                edgecolor="k",
             )
             ax.set_title(title)
             ax.set_xticks(range(0, 12))
@@ -479,7 +484,8 @@ def plot_reservoir_most_likely_group_maps(model, model_data, op_group):
         most_likely_groups.append([res, *rdf.idxmax(axis=0).values])
 
     most_likely_groups = pd.DataFrame.from_records(
-        most_likely_groups, columns=["res", *range(1, 13)]
+        most_likely_groups,
+        columns=["res", *range(1, 13)],
     )
     most_likely_groups = most_likely_groups.set_index("res")
     most_likely_groups["basin"] = res_huc2
@@ -491,7 +497,8 @@ def plot_reservoir_most_likely_group_maps(model, model_data, op_group):
         most_likely_basin_groups.append([basin, *mode[range(1, 13)].values[0]])
 
     most_likely_basin_groups = pd.DataFrame.from_records(
-        most_likely_basin_groups, columns=["basin", *range(1, 13)]
+        most_likely_basin_groups,
+        columns=["basin", *range(1, 13)],
     )
 
     color_pal = sns.color_palette("Paired")
@@ -615,7 +622,7 @@ def plot_basin_group_makeup():
         index_keys=["index"],
     ).set_index("res_id")
     op_groups["op_group"] = op_groups["op_group"].replace(
-        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"}
+        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"},
     )
     res_huc2 = load_feather(
         config.get_dir("spatial_data") / "updated_res_huc2.feather",
@@ -649,11 +656,11 @@ def plot_res_group_colored_timeseries(results, model, model_data, res=None):
     df = data.loc[:, ["storage", "inflow", "release"]]
     df["groups"] = groups
     df["modeled_release"] = pd.concat(
-        [results["train_data"]["model"], results["test_data"]["model"]]
+        [results["train_data"]["model"], results["test_data"]["model"]],
     )
 
     grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info").set_index(
-        "GRAND_ID"
+        "GRAND_ID",
     )
 
     res_huc2 = load_feather(
@@ -668,7 +675,7 @@ def plot_res_group_colored_timeseries(results, model, model_data, res=None):
 
     style_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     op_groups = load_pickle(
-        config.get_dir("agg_results") / "best_model_op_groups.pickle"
+        config.get_dir("agg_results") / "best_model_op_groups.pickle",
     )
     op_groups["Large"] = [
         *op_groups["Large 1"],
@@ -794,7 +801,7 @@ def parallel_body_colored_group_plots(
         file_res = "_".join(print_res.lower().split())
         odir = os.path.expanduser(
             "~/Dropbox/plrt-conus-figures/good_figures/"
-            f"group_colored_timeseries/{op_group}"
+            f"group_colored_timeseries/{op_group}",
         )
         if not os.path.exists(odir):
             os.makedirs(odir)
@@ -813,7 +820,7 @@ def load_op_groups():
         index_keys=["index"],
     )
     op_groups["op_group"] = op_groups["op_group"].replace(
-        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"}
+        {"Large 1": "Large", "Large 2": "Large", "Large 3": "Large"},
     )
     return op_groups
 
@@ -853,7 +860,7 @@ def plot_basin_group_entropy(
     print(
         (
             res_huc2.groupby("huc2_id").max() - res_huc2.groupby("huc2_id").min()
-        ).sort_values(by="entropy", ascending=False)
+        ).sort_values(by="entropy", ascending=False),
     )
     from IPython import embed as II
 
@@ -876,7 +883,8 @@ def plot_basin_group_entropy(
     score_range = max_score - min_score
 
     norm = Normalize(
-        vmin=min_score - score_range * 0.05, vmax=max_score + score_range * 0.05
+        vmin=min_score - score_range * 0.05,
+        vmax=max_score + score_range * 0.05,
     )
     cmap = get_cmap("viridis")
     other_bounds = []
@@ -948,7 +956,7 @@ def plot_basin_group_entropy(
     }[op_group]
     outdir = os.path.expanduser(
         "~/Dropbox/plrt-conus-figures/good_figures/op_group_analysis/"
-        "op_group_entropy_maps"
+        "op_group_entropy_maps",
     )
     if scale:
         file_name = "scaled_" + file_name
@@ -963,7 +971,7 @@ def plot_training_vs_testing_simul_perf(model_results, ax=None):
     opt_model_results = load_model_results(
         config.get_dir("results")
         / "monthly_merged_data_set_minyr3"
-        / "TD6_MSS0.03_SM_basin_0.8"
+        / "TD6_MSS0.03_SM_basin_0.8",
     )
     opt_simmed = opt_model_results["simmed_data"]
 
@@ -1088,12 +1096,17 @@ def plot_experimental_dset_sim_perf():
     fig.align_xlabels()
     fig.align_ylabels()
     plt.subplots_adjust(
-        top=0.7, bottom=0.11, left=0.2, right=0.8, hspace=0.15, wspace=0.05
+        top=0.7,
+        bottom=0.11,
+        left=0.2,
+        right=0.8,
+        hspace=0.15,
+        wspace=0.05,
     )
     plt.savefig(
         os.path.expanduser(
             "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
-            "nnse_vs_nrmse_diff.svg"
+            "nnse_vs_nrmse_diff.svg",
         ),
         format="svg",
         dpi=1200,
@@ -1114,7 +1127,7 @@ def transition_probabilities(model, model_data):
             "Large 1": "Large",
             "Large 2": "Large",
             "Large 3": "Large",
-        }
+        },
     )
     resers = res_op_groups[res_op_groups["op_group"].isin(TIME_VARYING_GROUPS)].index
     groups = groups.loc[pd.IndexSlice[resers, :]]
@@ -1123,7 +1136,7 @@ def transition_probabilities(model, model_data):
     groups["lagged"] = groups.groupby("res_id")["group"].shift(1)
     next_counts = groups.groupby(["res_id", "group"])["lagged"].value_counts()
     next_props = next_counts.groupby(["res_id", "group"], group_keys=False).apply(
-        lambda x: x / x.sum()
+        lambda x: x / x.sum(),
     )
     next_props.name = "t_prob"
     next_props = next_props.to_frame()
@@ -1158,7 +1171,7 @@ def plot_coef_bar(model_path, split=False):
         coefs.index = [
             get_pretty_var_name(i, math=True, lower=True) for i in coefs.index
         ]
-        colors = {i: c for i, c in zip(coefs.index, sns.color_palette("muted"))}
+        colors = dict(zip(coefs.index, sns.color_palette("muted")))
 
         plot_order = [
             get_pretty_var_name(i, math=True, lower=True) for i in coefs.index
@@ -1173,7 +1186,10 @@ def plot_coef_bar(model_path, split=False):
         for mode, ax in zip(coefs.columns, axes):
             pdf = coefs[mode]
             pdf.loc[plot_order[::-1]].plot.barh(
-                ax=ax, color=[colors[i] for i in pdf.index], width=0.8, zorder=2
+                ax=ax,
+                color=[colors[i] for i in pdf.index],
+                width=0.8,
+                zorder=2,
             )
             ax.set_title(f"Mode: {mode}")
             ax.grid(True, color="k", linewidth=0.5, zorder=0)

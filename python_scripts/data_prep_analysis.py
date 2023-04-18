@@ -13,9 +13,7 @@ def load_trimmed_resers():
 
 
 def load_noncon_trimmed_resers():
-    return load_pickle(
-        config.get_dir("data_to_sync") / "noncon_trim_res.pickle"
-    )
+    return load_pickle(config.get_dir("data_to_sync") / "noncon_trim_res.pickle")
 
 
 def load_res_huc2_map():
@@ -43,9 +41,7 @@ def determine_huc2_trimming_changes(noncon=False):
 def plot_trimming_changes_map(noncon=False):
     fig, ax, m = setup_wbd_map()
 
-    grand = gpd.read_file(
-        (config.get_dir("spatial_data") / "grand_info").as_posix()
-    )
+    grand = gpd.read_file((config.get_dir("spatial_data") / "grand_info").as_posix())
     grand = grand.set_index("GRAND_ID")
 
     if noncon:
@@ -57,12 +53,7 @@ def plot_trimming_changes_map(noncon=False):
         resers = resers.astype(int)
         coords = grand.loc[resers]
         x, y = list(
-            zip(
-                *[
-                    (row["LONG_DD"], row["LAT_DD"])
-                    for _, row in coords.iterrows()
-                ]
-            )
+            zip(*[(row["LONG_DD"], row["LAT_DD"]) for _, row in coords.iterrows()]),
         )
         n_res = len(x)
         m.scatter(
@@ -89,12 +80,8 @@ def plot_data_diff_map(results, year1, year2):
 
     grand = grand.set_index("GRAND_ID")
 
-    yr1_coords = grand.loc[
-        yr1_meta.index, ["LONG_DD", "LAT_DD"]
-    ].values.tolist()
-    yr2_coords = grand.loc[
-        yr2_meta.index, ["LONG_DD", "LAT_DD"]
-    ].values.tolist()
+    yr1_coords = grand.loc[yr1_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
+    yr2_coords = grand.loc[yr2_meta.index, ["LONG_DD", "LAT_DD"]].values.tolist()
 
     yr1_x, yr1_y = list(zip(*yr1_coords))
     yr2_x, yr2_y = list(zip(*yr2_coords))

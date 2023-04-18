@@ -204,7 +204,7 @@ def plot_basin_comparison_map(basin):
     basin_data = comp_data.loc[
         (comp_data["level_0"] == basin) | (comp_data["level_1"] == basin)
     ]
-    other_basins = list(set([*basin_data["level_0"], *basin_data["level_1"]]))
+    other_basins = list({*basin_data["level_0"], *basin_data["level_1"]})
     other_basins.remove(basin)
     basin_data = basin_data.set_index(["level_0", "level_1"])
     scores_var = "cosine"
@@ -430,7 +430,7 @@ def find_similar_basins():
 
     scores = np.array(scores)
     mean = scores.mean(axis=1)
-    mean = [tup for tup in enumerate(list(mean))]
+    mean = list(enumerate(list(mean)))
     mean.sort(key=lambda x: x[1])
 
     output = [
@@ -498,7 +498,7 @@ def find_similar_reservoir_characteristics(model_results):
         [
             groups.index.get_level_values(0),
             groups.index.get_level_values(1).month,
-        ]
+        ],
     ).value_counts()
 
     seasonal_percentages = {}
@@ -578,7 +578,7 @@ def find_similar_reservoir_characteristics(model_results):
             [
                 *res,
                 *rdf[diff_columns].mean().values,
-            ]
+            ],
         )
     closest_diffs = pd.DataFrame.from_records(
         closest_diffs,
@@ -614,7 +614,9 @@ def plot_reservoir_group_access_map():
     # wbd_map = {int(i): wbd for i, wbd in zip(wbd_ids, wbds)}
 
     res_access = pd.read_csv(
-        "../aggregated_results/res_group_access.csv", index_col=0, dtype=str
+        "../aggregated_results/res_group_access.csv",
+        index_col=0,
+        dtype=str,
     )
     grand = gpd.read_file(config.get_dir("spatial_data") / "my_grand_info")
 
@@ -684,7 +686,7 @@ def plot_reservoir_most_likely_group_maps(model_results):
         [
             groups.index.get_level_values(0),
             groups.index.get_level_values(1).month,
-        ]
+        ],
     ).value_counts()
 
     most_likely_groups = []
@@ -696,7 +698,8 @@ def plot_reservoir_most_likely_group_maps(model_results):
         most_likely_groups.append([res, *rdf.idxmax(axis=1).values])
 
     most_likely_groups = pd.DataFrame.from_records(
-        most_likely_groups, columns=["res", *range(1, 13)]
+        most_likely_groups,
+        columns=["res", *range(1, 13)],
     )
     # norm = Normalize(vmin=0, vmax=11)
     # cmap = get_cmap("Set3")
@@ -855,7 +858,9 @@ def plot_reservoir_most_likely_group_maps(model_results):
 
 
 def rank_reservoirs_by_performance(
-    model_results, monthly_group=False, plot_pairs=False
+    model_results,
+    monthly_group=False,
+    plot_pairs=False,
 ):
     train_data = model_results["train_data"]
     test_data = model_results["test_data"]
@@ -1040,7 +1045,9 @@ def plot_basin_mean_performance(
         cbar_ax = fig.add_subplot(gs[:, 1])
 
         m = setup_map(
-            coords=[west, south, east, north], other_bound=other_bounds, ax=ax
+            coords=[west, south, east, north],
+            other_bound=other_bounds,
+            ax=ax,
         )
         maps = [m]
 
@@ -1245,7 +1252,9 @@ def plot_basin_group_variance(
         cbar_ax = fig.add_subplot(gs[:, 1])
 
         m = setup_map(
-            coords=[west, south, east, north], other_bound=other_bounds, ax=ax
+            coords=[west, south, east, north],
+            other_bound=other_bounds,
+            ax=ax,
         )
         maps = [m]
 
@@ -1320,7 +1329,10 @@ def plot_basin_mean_performance_dset_tile(
     train_scores = metric_func(model_results["train_data"], "actual", "model", "res_id")
     test_scores = metric_func(model_results["test_data"], "actual", "model", "res_id")
     simmed_scores = metric_func(
-        model_results["simmed_data"], "actual", "model", "res_id"
+        model_results["simmed_data"],
+        "actual",
+        "model",
+        "res_id",
     )
 
     train_resers = train_scores.index
@@ -1430,7 +1442,12 @@ def plot_basin_mean_performance_dset_tile(
     )
     # fig.suptitle(f"{data_set.title()}ing Reservoirs")
     plt.subplots_adjust(
-        top=0.96, bottom=0.068, left=0.02, right=0.98, hspace=0.15, wspace=0.066
+        top=0.96,
+        bottom=0.068,
+        left=0.02,
+        right=0.98,
+        hspace=0.15,
+        wspace=0.066,
     )
     plt.show()
     # if monthly:
@@ -1446,7 +1463,11 @@ def plot_basin_mean_performance_dset_tile(
 
 
 def new_plot_leave_out_performance_comparisons(
-    model_path, axes=None, label_x=True, label_y="left", legend="left"
+    model_path,
+    axes=None,
+    label_x=True,
+    label_y="left",
+    legend="left",
 ):
     """Plot the experimental NNSE for Training and Testing reservoirs against
     the base model NNSE for Training and Testing reservoirs.
@@ -1481,7 +1502,7 @@ def new_plot_leave_out_performance_comparisons(
     base_results = load_model_results(
         config.get_dir("results")
         / "monthly_merged_data_set_minyr3"
-        / "TD6_MSS0.03_SM_basin_0.8"
+        / "TD6_MSS0.03_SM_basin_0.8",
     )
 
     lower_20_train = lower_20["train_data"]
@@ -1500,16 +1521,20 @@ def new_plot_leave_out_performance_comparisons(
     # select simulation records from experimental sets that correspond
     # to training and testing reservoirs.
     upper_train_df = upper_20_simmed.loc[
-        pd.IndexSlice[upper_20_train_resers, :], :
+        pd.IndexSlice[upper_20_train_resers, :],
+        :,
     ].copy()
     upper_test_df = upper_20_simmed.loc[
-        pd.IndexSlice[upper_20_test_resers, :], :
+        pd.IndexSlice[upper_20_test_resers, :],
+        :,
     ].copy()
     lower_train_df = lower_20_simmed.loc[
-        pd.IndexSlice[lower_20_train_resers, :], :
+        pd.IndexSlice[lower_20_train_resers, :],
+        :,
     ].copy()
     lower_test_df = lower_20_simmed.loc[
-        pd.IndexSlice[lower_20_test_resers, :], :
+        pd.IndexSlice[lower_20_test_resers, :],
+        :,
     ].copy()
 
     # calculate the base model simul NNSE
@@ -1535,7 +1560,7 @@ def new_plot_leave_out_performance_comparisons(
     pretty_var = get_pretty_var_name(meta_var)
     titles = [f"Upper 20% {pretty_var}", f"Lower 20% {pretty_var}"]
     for i, (ax, dfs, title) in enumerate(
-        zip(axes, [experiment_dfs[:2], experiment_dfs[2:]], titles)
+        zip(axes, [experiment_dfs[:2], experiment_dfs[2:]], titles),
     ):
         train_df, test_df = dfs
         ax.scatter(
@@ -1611,7 +1636,7 @@ if __name__ == "__main__":
         model_path = "TD6_MSS0.03_SM_basin_0.8"
 
     model_results = load_model_results(
-        config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path
+        config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path,
     )
     # plot_basin_tree_breakdown_comparison(args.basins, model_results)
     # from itertools import combinations

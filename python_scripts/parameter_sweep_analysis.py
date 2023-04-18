@@ -155,7 +155,9 @@ def calculate_metrics(
 
 
 def metric_wide_to_long(
-    metric_df: pd.DataFrame, metric: str, keep_index=False
+    metric_df: pd.DataFrame,
+    metric: str,
+    keep_index=False,
 ) -> pd.DataFrame:
     """Convert a dataframe of metrics from wide to long
 
@@ -172,7 +174,9 @@ def metric_wide_to_long(
     if keep_index:
         index_name = metric_df.index.name
         df = metric_df.reset_index().melt(
-            id_vars=[index_name], var_name="model", value_name=metric
+            id_vars=[index_name],
+            var_name="model",
+            value_name=metric,
         )
     else:
         df = metric_df.melt(var_name="model", value_name=metric)
@@ -276,7 +280,8 @@ def make_parameter_sweep_comparison(metric_dict: dict, metric: str) -> None:
     cmp_metrics["max"] = metrics.groupby(["TD", "MSS"]).max()
 
     cmp_rank = cmp_metrics[["mean", "median", "min", "max"]].rank(
-        method="min", ascending=True
+        method="min",
+        ascending=True,
     )
     cmp_rank["std"] = cmp_metrics["std"].rank(method="min")
 
@@ -316,12 +321,12 @@ def plot_single_model_metrics(df: pd.DataFrame) -> None:
 
     metrics = pd.concat([nnse, nrmse])
     metrics["res_name"] = metrics["res_id"].apply(
-        lambda x: grand_names.loc[x, "DAM_NAME"]
+        lambda x: grand_names.loc[x, "DAM_NAME"],
     )
     metrics = metrics.sort_values(by=["metric", "value"])
 
     metrics["variable"] = metrics["variable"].replace(
-        {"test": "Testing", "simmed": "Simulation"}
+        {"test": "Testing", "simmed": "Simulation"},
     )
 
     fg = sns.catplot(
@@ -377,7 +382,7 @@ def compare_training_testing_data(results: dict, min_years: int) -> None:
     meta_melt = pd.concat([meta_melt, mr_data])
 
     meta_melt["variable"] = meta_melt["variable"].apply(
-        lambda x: get_pretty_var_name(x, math=True)
+        lambda x: get_pretty_var_name(x, math=True),
     )
     fg = sns.displot(
         data=meta_melt,
@@ -568,7 +573,7 @@ def plot_training_testing_map(results: dict, min_years: int) -> None:
     train_res = train_df.index.get_level_values("res_id").unique()
     all_res = all_resops["res_id"].unique().astype(str)
     merged_data, merged_meta = load_resopsus_data(min_years)
-    all_res = list(set([*all_res, *merged_meta.index]))
+    all_res = list({*all_res, *merged_meta.index})
 
     left_out_res = [i for i in all_res if i not in test_res and i not in train_res]
 
@@ -860,7 +865,8 @@ def get_model_rank_scores(results, metric="NNSE", resers=None):
     best_of_each_size.name = "best_model"
     best_of_each_size = best_of_each_size.to_frame()
     best_of_each_size.loc[:, df[["mean", "std", "50%", "min", "max"]].columns] = df.loc[
-        best_of_each_size["best_model"], ["mean", "std", "50%", "min", "max"]
+        best_of_each_size["best_model"],
+        ["mean", "std", "50%", "min", "max"],
     ].values
 
     from IPython import embed as II
@@ -914,7 +920,7 @@ if __name__ == "__main__":
 
     # * Load testing and training sets of resers
     basin_train, basin_test = load_pickle(
-        "./model_setup_files/test_train_basin_0.8.pickle"
+        "./model_setup_files/test_train_basin_0.8.pickle",
     )
     test_resers = []
     for resers in basin_test.values():
@@ -928,7 +934,10 @@ if __name__ == "__main__":
     simmed_data = get_data_from_results(results, dataset="simmed")
     # get_model_rank_scores(results, "NNSE")
     metrics = calculate_metrics(
-        simmed_data, data_set="simmed", metrics=("nnse", "nrmse"), recalc=False
+        simmed_data,
+        data_set="simmed",
+        metrics=("nnse", "nrmse"),
+        recalc=False,
     )
 
     # plot_metric_box_plot(metrics["nnse"], "NNSE", resers=test_resers)
