@@ -20,7 +20,6 @@ from plrt import PieceWiseLinearRegressionTree, load_model
 from sklearn.metrics import mean_squared_error, r2_score
 from utils.config import config
 from utils.io import load_feather, load_pickle, write_pickle
-from utils.metrics import get_nnse
 from utils.timing_function import time_function
 from utils.utils import my_groupby
 
@@ -65,7 +64,7 @@ def prep_data(df, monthly=False):
     else:
         grouper = df.index.get_level_values(0)
     std_data = my_groupby(df, grouper).apply(
-        lambda x: (x - x.mean()) / x.std().replace({0.0: 1.0})
+        lambda x: (x - x.mean()) / x.std().replace({0.0: 1.0}),
     )
     means = my_groupby(df, grouper).mean()
     std = my_groupby(df, grouper).std().replace({0.0: 1.0})
@@ -122,7 +121,10 @@ def split_train_test_by_basin(resers, train_prop):
     hucs = res_huc2["huc2_id"].unique()
     huc_resers = {i: res_huc2[res_huc2["huc2_id"] == i]["res_id"].values for i in hucs}
     basin_train, basin_test = {}, {}
+    import ipdb
+
     for huc_id, huc_res in huc_resers.items():
+        ipdb.set_trace()
         n_train_res = int(np.floor(len(huc_res) * train_prop))
         train_res = np.random.choice(huc_res, n_train_res, replace=False)
         test_res = [i for i in huc_res if i not in train_res]
@@ -165,7 +167,7 @@ def merge_mb_and_resops(df):
             "GRAND_ID": "res_id",
             "datetime": "date",
             "inflow": "net_inflow",
-        }
+        },
     )
     mb_df = mb_df.set_index(["res_id", "date"])
 
@@ -270,6 +272,10 @@ def pipeline(args):
         "release_pre2",
     ]
 
+    if args.previous_model:
+        X_vars.remove("inflow2")
+        X_vars.remove("release_pre2")
+
     X_vars_tree = copy.copy(X_vars)
 
     # no constants for tree to split on
@@ -292,11 +298,15 @@ def pipeline(args):
     else:
         if splitting_method[0] == "basin":
             basin_train, basin_test = split_train_test_by_basin(
-                reservoirs, float(splitting_method[-1])
+                reservoirs,
+                float(splitting_method[-1]),
             )
         else:
             basin_train, basin_test = split_train_test_by_basin_meta_var(
-                reservoirs, meta, splitting_method[1], float(splitting_method[-1])
+                reservoirs,
+                meta,
+                splitting_method[1],
+                float(splitting_method[-1]),
             )
         write_pickle((basin_train, basin_test), cache_file)
 
@@ -308,6 +318,9 @@ def pipeline(args):
 
     print(f"Number of training reservoirs: {len(train_res)}")
     print(f"Number of testing reservoirs: {len(test_res)}")
+    testing = True
+    if len(test_res) == 0:
+        testing = False
 
     # n_train_res = int(np.floor(len(reservoirs) * train_fraction))
     # train_res = np.random.choice(reservoirs, n_train_res, replace=False)
@@ -315,19 +328,24 @@ def pipeline(args):
 
     log("Getting training and testing data set", start_time)
     X_train = X.loc[X.index.get_level_values(0).isin(train_res), X_vars].sort_index()
-    X_test = X.loc[X.index.get_level_values(0).isin(test_res), X_vars].sort_index()
     X_train["const"] = 1
-    X_test["const"] = 1
-    X_vars.insert(0, "const")
     train_index = X_train.index
-    test_index = X_test.index
+
+    if testing:
+        X_test = X.loc[X.index.get_level_values(0).isin(test_res), X_vars].sort_index()
+        X_test["const"] = 1
+        test_index = X_test.index
+
+    X_vars.insert(0, "const")
 
     y_train = y.loc[train_index]
-    y_test = y.loc[test_index]
+    if testing:
+        y_test = y.loc[test_index]
 
     df["const"] = 1
-    X_test_act = df.loc[test_index, X_vars]
-    y_test_act = df.loc[test_index, "release"]
+    if testing:
+        X_test_act = df.loc[test_index, X_vars]
+        y_test_act = df.loc[test_index, "release"]
 
     add_tree_vars = ["rts", "max_sto"]
 
@@ -335,16 +353,18 @@ def pipeline(args):
         train_values = []
         for res, _ in X_train.index:
             train_values.append(meta.loc[res, tree_var])
-        test_values = []
-        for res, _ in X_test.index:
-            test_values.append(meta.loc[res, tree_var])
         X_train[tree_var] = train_values
-        X_test[tree_var] = test_values
-        X_test_act[tree_var] = test_values
+
+        if testing:
+            test_values = []
+            for res, _ in X_test.index:
+                test_values.append(meta.loc[res, tree_var])
+            X_test[tree_var] = test_values
+            X_test_act[tree_var] = test_values
 
     X_vars_tree = [*X_vars, *add_tree_vars]
 
-    if args.sim_all:
+    if args.sim_all or not testing:
         X_simul = df.loc[:, X_vars].sort_index()
         for tree_var in add_tree_vars:
             values = []
@@ -369,6 +389,12 @@ def pipeline(args):
         make_dot = True
         if args.load_model:
             model = load_model((folderpath / "model.pickle").as_posix())
+        elif args.previous_model:
+            model = load_model(
+                os.path.expanduser(
+                    "~/projects/predict-release/results/tclr_model_testing/all/TD4_MSS0.10_RT_MS_exhaustive/model.pickle",
+                ),
+            )
         else:
             model = PieceWiseLinearRegressionTree(
                 X_train,
@@ -403,8 +429,12 @@ def pipeline(args):
             columns=X_vars,
         )
 
-        fitted = time_function(model.predict)()
-        preds = time_function(model.predict)(X_test)
+        if args.previous_model:
+            fitted = time_function(model.predict)(X_train)
+        else:
+            fitted = time_function(model.predict)()
+        if testing:
+            preds = time_function(model.predict)(X_test)
 
         log("Simulating model", start_time)
 
@@ -431,7 +461,8 @@ def pipeline(args):
         beta = np.linalg.inv(X_train.T @ X_train) @ (X_train.T @ y_train)
         coefs = pd.Series(beta, index=X_vars)
         fitted = X_train @ beta
-        preds = X_test @ beta
+        if testing:
+            preds = X_test @ beta
         simuled = simulate_plrt_model(
             beta,
             "beta",
@@ -452,172 +483,70 @@ def pipeline(args):
     log("Preparing Output", start_time)
 
     fitted = pd.Series(fitted, index=X_train.index)
-    preds = pd.Series(preds, index=X_test.index)
+    if testing:
+        preds = pd.Series(preds, index=X_test.index)
     simmed = simuled["release"]
 
     idx = pd.IndexSlice
     if args.monthly:
         train_locator = idx[train_res, :]
-        test_locator = idx[test_res, :]
     else:
         train_locator = train_res
-        test_locator = test_res
+
+    if testing:
+        if args.monthly:
+            test_locator = idx[test_res, :]
+        else:
+            test_locator = test_res
 
     y_train_act = unstandardize(
         y_train,
         means.loc[train_locator, "release"],
         std.loc[train_locator, "release"],
     )
-    y_test_act = unstandardize(
-        y_test,
-        means.loc[test_locator, "release"],
-        std.loc[test_locator, "release"],
-    )
+    if testing:
+        y_test_act = unstandardize(
+            y_test,
+            means.loc[test_locator, "release"],
+            std.loc[test_locator, "release"],
+        )
     fitted_act = unstandardize(
         fitted,
         means.loc[train_locator, "release"],
         std.loc[train_locator, "release"],
     )
-    preds_act = unstandardize(
-        preds,
-        means.loc[test_locator, "release"],
-        std.loc[test_locator, "release"],
-    )
+    if testing:
+        preds_act = unstandardize(
+            preds,
+            means.loc[test_locator, "release"],
+            std.loc[test_locator, "release"],
+        )
 
     y_test_sim = df.loc[simmed.index, "release"]
 
     f_act_score = r2_score(y_train_act, fitted_act)
-    f_act_rmse = np.sqrt(mean_squared_error(y_train_act, fitted_act))
-    p_act_score = r2_score(y_test_act, preds_act)
-    p_act_rmse = np.sqrt(mean_squared_error(y_test_act, preds_act))
+    np.sqrt(mean_squared_error(y_train_act, fitted_act))
+    if testing:
+        r2_score(y_test_act, preds_act)
     s_act_score = r2_score(y_test_sim, simmed)
-    s_act_rmse = np.sqrt(mean_squared_error(y_test_sim, simmed))
 
-    train_res_grouper = y_train_act.index.get_level_values(0)
-    test_res_grouper = y_test_act.index.get_level_values(0)
-    train_time_grouper = y_train_act.index.get_level_values(1)
-    test_time_grouper = y_test_act.index.get_level_values(1)
-
-    y_train_mean = my_groupby(y_train_act, train_res_grouper).mean()
-    y_test_mean = my_groupby(y_test_act, test_res_grouper).mean()
-    fmean = my_groupby(fitted_act, train_res_grouper).mean()
-    pmean = my_groupby(preds_act, test_res_grouper).mean()
-    smean = my_groupby(simmed, simmed.index.get_level_values(0)).mean()
-
-    f_bias = fmean - y_train_mean
-    f_bias_month = (
-        my_groupby(fitted_act, train_time_grouper.month).mean()
-        - my_groupby(y_train_act, train_time_grouper.month).mean()
-    )
-    p_bias = pmean - y_test_mean
-    p_bias_month = (
-        my_groupby(preds_act, test_time_grouper.month).mean()
-        - my_groupby(y_test_act, test_time_grouper.month).mean()
-    )
-    s_bias = smean - y_test_mean
-    s_bias_month = (
-        my_groupby(simmed, simmed.index.get_level_values(1).month).mean()
-        - my_groupby(y_test_sim, simmed.index.get_level_values(1).month).mean()
-    )
-
-    results = {
-        "f_act_score": f_act_score,
-        "f_act_rmse": f_act_rmse,
-        "f_bias": f_bias,
-        "f_bias_month": f_bias_month,
-        "p_act_score": p_act_score,
-        "p_act_rmse": p_act_rmse,
-        "p_bias": p_bias,
-        "p_bias_month": p_bias_month,
-        "s_act_score": s_act_score,
-        "s_act_rmse": s_act_rmse,
-        "s_bias": s_bias,
-        "s_bias_month": s_bias_month,
-        "coefs": coefs,
-    }
-
-    train_data = pd.DataFrame(dict(actual=y_train_act, model=fitted_act))
-    test_data = pd.DataFrame(dict(actual=y_test_act, model=preds_act))
-    simmed_data = pd.DataFrame(dict(actual=y_test_sim, model=simmed))
-
-    train_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE", "NNSE"])
-    test_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE", "NNSE"])
-    simmed_res_scores = pd.DataFrame(index=reservoirs, columns=["NSE", "RMSE", "NNSE"])
-
-    train_res_scores["NSE"] = my_groupby(train_data, train_res_grouper).apply(
-        lambda x: r2_score(x["actual"], x["model"])
-    )
-    train_res_scores["RMSE"] = my_groupby(train_data, train_res_grouper).apply(
-        lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
-    )
-    train_res_scores["NNSE"] = get_nnse(
-        train_data, "actual", "model", train_res_grouper
-    )
-
-    results["train_res_scores"] = train_res_scores
-
-    test_res_scores["NSE"] = my_groupby(test_data, test_res_grouper).apply(
-        lambda x: r2_score(x["actual"], x["model"])
-    )
-    test_res_scores["RMSE"] = my_groupby(test_data, test_res_grouper).apply(
-        lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
-    )
-    test_res_scores["NNSE"] = get_nnse(test_data, "actual", "model", test_res_grouper)
-
-    results["test_res_scores"] = test_res_scores
-    simmed_res_grouper = simmed_data.index.get_level_values(0)
-    simmed_res_scores["NSE"] = my_groupby(simmed_data, simmed_res_grouper).apply(
-        lambda x: r2_score(x["actual"], x["model"])
-    )
-    simmed_res_scores["RMSE"] = my_groupby(simmed_data, simmed_res_grouper).apply(
-        lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
-    )
-    simmed_res_scores["NNSE"] = get_nnse(
-        simmed_data, "actual", "model", simmed_res_grouper
-    )
-
-    results["simmed_res_scores"] = simmed_res_scores
-
-    print(simmed_res_scores.describe().to_markdown(floatfmt="0.3f"))
-
-    train_quant, _ = pd.qcut(train_data["actual"], 3, labels=False, retbins=True)
-    quant_scores = pd.DataFrame(index=[0, 1, 2], columns=["NSE", "RMSE"])
-    train_data["bin"] = train_quant
-
-    quant_scores["NSE"] = my_groupby(train_data, "bin").apply(
-        lambda x: r2_score(x["actual"], x["model"])
-    )
-    quant_scores["RMSE"] = my_groupby(train_data, "bin").apply(
-        lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
-    )
-
-    test_quant, _ = pd.qcut(test_data["actual"], 3, labels=False, retbins=True)
-    quant_scores = pd.DataFrame(index=[0, 1, 2], columns=["NSE", "RMSE"])
-    test_data["bin"] = test_quant
-
-    quant_scores["NSE"] = my_groupby(test_data, "bin").apply(
-        lambda x: r2_score(x["actual"], x["model"])
-    )
-    quant_scores["RMSE"] = my_groupby(test_data, "bin").apply(
-        lambda x: mean_squared_error(x["actual"], x["model"], squared=False)
-    )
+    train_data = pd.DataFrame({"actual": y_train_act, "model": fitted_act})
+    if testing:
+        test_data = pd.DataFrame({"actual": y_test_act, "model": preds_act})
+    else:
+        test_data = pd.DataFrame(columns=["actual", "model"])
+    simmed_data = pd.DataFrame({"actual": y_test_sim, "model": simmed})
 
     # setup output parameters
     # check if the directory exists and handle it
     if folderpath.is_dir():
-        # response = input(
-        #    f"{folderpath} already exists. Are you sure you want to " \
-        #       "overwrite its contents? [y/N] "
-        # )
-        response = "y"
-        if response[0].lower() != "y":
-            folderpath = (
-                config.get_dir("results")
-                / model_set
-                / "_".join([foldername, datetime.today().strfime("%Y%m%d_%H%M")])
-            )
-            print(f"Saving at {folderpath} instead.")
-            folderpath.mkdir()
+        folderpath = (
+            config.get_dir("results")
+            / model_set
+            / "_".join([foldername, datetime.today().strfime("%Y%m%d_%H%M")])
+        )
+        print(f"Saving at {folderpath} instead.")
+        folderpath.mkdir()
     else:
         folderpath.mkdir(parents=True)
 
@@ -632,11 +561,11 @@ def pipeline(args):
     X_train["storage_pre"] = X["storage_pre"]
     output = {
         "f_act_score": f_act_score,
-        "p_act_score": p_act_score,
+        # "p_act_score": p_act_score,
         "s_act_score": s_act_score,
-        "f_res_scores": train_res_scores,
-        "p_res_scores": test_res_scores,
-        "s_res_scores": simmed_res_scores,
+        # "f_res_scores": train_res_scores,
+        # "p_res_scores": test_res_scores,
+        # "s_res_scores": simmed_res_scores,
         "train_data": train_data,
         "test_data": test_data,
         "simmed_data": simmed_data,
@@ -657,11 +586,15 @@ def make_output_paths(args):
     model_set = f"merged_data_set_minyr{args.min_years}"
     if args.monthly:
         model_set = f"monthly_{model_set}"
-    assim_mod = f"_{args.assim}" if args.assim else ""
-    mss_mod = f"_MSS{args.mss:0.2f}"
-    sm_mod = f"_SM_{'_'.join(args.splitting_method)}"
-    from_store_mod = "_FROM_STORED" if args.load_model else ""
-    foldername = f"TD{args.max_depth}{assim_mod}{mss_mod}{sm_mod}{from_store_mod}"
+    if args.previous_model:
+        foldername = "previous_model"
+    else:
+        assim_mod = f"_{args.assim}" if args.assim else ""
+        mss_mod = f"_MSS{args.mss:0.2f}"
+        sm_mod = f"_SM_{'_'.join(args.splitting_method)}"
+        from_store_mod = "_FROM_STORED" if args.load_model else ""
+        foldername = f"TD{args.max_depth}{assim_mod}{mss_mod}{sm_mod}{from_store_mod}"
+
     return model_set, foldername
 
 
@@ -682,7 +615,8 @@ def simulate_plrt_model(
     # I need to keep track of actual storage and release outputs
     # as well as rolling weekly mean storage and release outputs
     track_df = pd.DataFrame(
-        columns=["release", "storage"] + list(X_act.columns), index=X_act.index
+        columns=["release", "storage"] + list(X_act.columns),
+        index=X_act.index,
     )
     track_df[["const", "inflow", "inflow_roll7", "inflow2"]] = X_act[
         ["const", "inflow", "inflow_roll7", "inflow2"]
@@ -697,7 +631,8 @@ def simulate_plrt_model(
         # rolling 7 day means so we need 7 days of actual values
         first_seven = rdf.index.get_level_values(1).values[:7]
         track_df.loc[idx[res, first_seven], ["release_pre", "storage_pre"]] = X_act.loc[
-            idx[res, first_seven], ["release_pre", "storage_pre"]
+            idx[res, first_seven],
+            ["release_pre", "storage_pre"],
         ]
         start_dates[res] = first_seven[-1]
 
@@ -715,7 +650,8 @@ def simulate_plrt_model(
 
     # add init rolling values to track df
     track_df.loc[
-        init_rolling.index, ["storage_roll7", "release_roll7"]
+        init_rolling.index,
+        ["storage_roll7", "release_roll7"],
     ] = init_rolling.values
 
     X_act["storage_roll7"] = track_df["storage_roll7"]
@@ -757,7 +693,7 @@ def simulate_plrt_model(
                     lower_bounds,
                     upper_bounds,
                     assim,
-                )
+                ),
             )
     return pd.concat(outputdfs)
 
@@ -837,7 +773,8 @@ def simul_reservoir(
 
         if monthly:
             X_r = (X_r - means.loc[pd.IndexSlice[res, month], reg_vars_nsd]) / std.loc[
-                pd.IndexSlice[res, month], reg_vars_nsd
+                pd.IndexSlice[res, month],
+                reg_vars_nsd,
             ]
 
             X_r["sto_diff"] = X_r["storage_pre"] - (
@@ -910,10 +847,12 @@ def simul_reservoir(
                 offset = ((date - start_date) / np.timedelta64(1, "D")) % assim_shift
                 if offset == 0:
                     rdf.loc[idx[res, tomorrow], "storage_pre"] = track_df.loc[
-                        idx[res, tomorrow], "storage_pre"
+                        idx[res, tomorrow],
+                        "storage_pre",
                     ]
                     rdf.loc[idx[res, tomorrow], "release_pre"] = track_df.loc[
-                        idx[res, tomorrow], "release_pre"
+                        idx[res, tomorrow],
+                        "release_pre",
                     ]
                 else:
                     rdf.loc[idx[res, tomorrow], "storage_pre"] = storage
@@ -924,13 +863,16 @@ def simul_reservoir(
             # here we already updated the _pre values we can use the
             # same logic to get rolling values
             rdf.loc[idx[res, tomorrow], "storage_roll7"] = rdf.loc[
-                idx[res, prev_seven], "storage_pre"
+                idx[res, prev_seven],
+                "storage_pre",
             ].mean()
             roll_storage.loc[idx[res, tomorrow]] = rdf.loc[
-                idx[res, prev_seven], "storage_pre"
+                idx[res, prev_seven],
+                "storage_pre",
             ].mean()
             rdf.loc[idx[res, tomorrow], "release_roll7"] = rdf.loc[
-                idx[res, prev_seven], "release_pre"
+                idx[res, prev_seven],
+                "release_pre",
             ].mean()
             rdf.loc[idx[res, tomorrow], :] = rdf.loc[idx[res, tomorrow], :]
         rdf.loc[loc, :] = rdf.loc[loc, :]
@@ -939,7 +881,7 @@ def simul_reservoir(
 
 def parse_args(arg_list=None):
     parser = argparse.ArgumentParser(
-        description="Fit and test a PLRT model to specified data"
+        description="Fit and test a PLRT model to specified data",
     )
     parser.add_argument(
         "-d",
@@ -1032,6 +974,13 @@ def parse_args(arg_list=None):
         default=10,
         type=int,
         help="Verbosity level for `joblib` Parallel()",
+    )
+    parser.add_argument(
+        "--previous-model",
+        dest="previous_model",
+        action="store_true",
+        default=False,
+        help="Run model from PLRT MB Paper on CONUS Data",
     )
     if arg_list:
         return parser.parse_args(arg_list)

@@ -25,23 +25,17 @@ def combine_single_variable_tables():
     storage.index = pd.to_datetime(storage.index, format="%Y-%m-%d")
 
     inflow = (
-        inflow.melt(
-            ignore_index=False, var_name="res_id", value_name="inflow_cms"
-        )
+        inflow.melt(ignore_index=False, var_name="res_id", value_name="inflow_cms")
         .reset_index()
         .set_index(["res_id", "date"])
     )
     release = (
-        release.melt(
-            ignore_index=False, var_name="res_id", value_name="release_cms"
-        )
+        release.melt(ignore_index=False, var_name="res_id", value_name="release_cms")
         .reset_index()
         .set_index(["res_id", "date"])
     )
     storage = (
-        storage.melt(
-            ignore_index=False, var_name="res_id", value_name="storage_mcm"
-        )
+        storage.melt(ignore_index=False, var_name="res_id", value_name="storage_mcm")
         .reset_index()
         .set_index(["res_id", "date"])
     )
@@ -60,7 +54,7 @@ def convert_units(records):
             "inflow_cms": "inflow",
             "release_cms": "release",
             "storage_mcm": "storage",
-        }
+        },
     )
     return records
 
@@ -68,5 +62,8 @@ def convert_units(records):
 if __name__ == "__main__":
     records = combine_single_variable_tables()
     records = convert_units(records)
+    import ipdb
+
+    ipdb.set_trace()
     write_feather(records, AGG_FILE)
     print(f"Records stored in {AGG_FILE}")

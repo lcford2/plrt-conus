@@ -19,9 +19,23 @@ exclude = '''
 '''
 
 [tool.ruff]
-select = ["E", "F"]
-ignore = ["E402", "W503", "E203", "N803", "N806"]
+ignore = ["E402", "N803", "N806"]
 line-length = 88
+select = [
+    # pycodestyle
+    "E",
+    "W",
+    # pyflakes
+    "F",
+    # isort
+    "I",
+    # flake8 quotes
+    "Q",
+    # flake8 commas
+    "COM",
+    # flake8 comprehensions
+    "C4",
+]
 
 
 [tool.poetry]
@@ -57,6 +71,7 @@ threadpoolctl = "3.1.0"
 geopandas = "^0.12.2"
 ruff = "^0.0.258"
 flake8-to-ruff = "^0.0.233"
+pre-commit = "^3.2.2"
 
 [tool.poetry.group.dev.dependencies]
 ipython = "^8.9.0"

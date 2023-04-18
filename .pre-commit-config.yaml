@@ -10,20 +10,13 @@ repos:
   - id: check-added-large-files
     args: [--maxkb=25000]
 
-
-- repo: https://github.com/pycqa/isort
-  rev: 5.10.1
+- repo: https://github.com/charliermarsh/ruff-pre-commit.git
+  rev: v0.0.261
   hooks:
-    - id: isort
-      args: [--profile, black, -l, "88"]
-      name: isort (python)
+    - id: ruff
+      args: [--fix, --exit-non-zero-on-fix]
 
 - repo: https://github.com/psf/black
   rev: 22.6.0
   hooks:
   - id: black
-
-- repo: https://github.com/pycqa/flake8
-  rev: 4.0.1
-  hooks:
-    - id: flake8

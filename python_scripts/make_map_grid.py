@@ -5,7 +5,7 @@ from PIL import Image
 
 image_path = pathlib.Path(
     "/home/lucas/Dropbox/plrt-conus-figures/good_figures/"
-    "op_group_analysis/op_group_entropy_maps/scaled"
+    "op_group_analysis/op_group_entropy_maps/scaled",
 )
 
 images = [

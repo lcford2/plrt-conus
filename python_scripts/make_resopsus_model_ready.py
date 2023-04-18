@@ -13,9 +13,7 @@ def get_max_date_span(in_df):
     dates = pd.to_datetime(in_df.index.get_level_values(1))
     df["date"] = dates
     df["mask"] = 1
-    df.loc[
-        df["date"] - datetime.timedelta(days=1) == df["date"].shift(), "mask"
-    ] = 0
+    df.loc[df["date"] - datetime.timedelta(days=1) == df["date"].shift(), "mask"] = 0
     df["mask"] = df["mask"].cumsum()
     spans = df.loc[df["mask"] == df["mask"].value_counts().idxmax(), "date"]
     return (spans.min(), spans.max())
@@ -121,12 +119,12 @@ def make_model_ready_data(df):
     trimmed_dfs = {i: get_trimmed_df(spans, i, df) for i in range(1, 6)}
 
     trimmed_resers = {
-        i: tdf.index.get_level_values("res_id").unique
-        for i, tdf in trimmed_dfs.items()
+        i: tdf.index.get_level_values("res_id").unique for i, tdf in trimmed_dfs.items()
     }
 
     write_pickle(
-        trimmed_resers, config.get_dir("data_to_sync") / "trimmed_resers.pickle"
+        trimmed_resers,
+        config.get_dir("data_to_sync") / "trimmed_resers.pickle",
     )
 
     for i, tdf in trimmed_dfs.items():

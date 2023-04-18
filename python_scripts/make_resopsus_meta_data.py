@@ -8,9 +8,7 @@ MODEL_READY_META_FILE = config.get_file("merged_meta")
 
 def make_meta_data(df):
     means = df.groupby("res_id").mean()
-    meta = pd.DataFrame(
-        index=means.index, columns=["rts", "max_sto", "rel_inf_corr"]
-    )
+    meta = pd.DataFrame(index=means.index, columns=["rts", "max_sto", "rel_inf_corr"])
     meta["rts"] = means["storage"] / means["release"]
     meta["max_sto"] = df.groupby("res_id")["storage"].max()
     meta["rel_inf_corr"] = (
