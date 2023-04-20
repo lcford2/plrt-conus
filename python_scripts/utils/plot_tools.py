@@ -15,7 +15,7 @@ _PRETTY_VAR_NAMES_MATH = {
     "inflow2": r"$NI^2$",
     "release_pre2": r"$R_{t-1}^2$",
     "sto_diff": r"$\Delta S_{t-1}$",
-    "release_roll7": r"$\overline{S}_{t-1}^7$",
+    "release_roll7": r"$\overline{D}_{t-1}^7$",
     "inflow_roll7": r"$\overline{NI}_{t}^7$",
     "storage_x_inflow": r"$S_{t-1} \times NI_t$",
 }
@@ -31,7 +31,7 @@ _PRETTY_VAR_NAMES_MATH_LOWER = {
     "inflow2": r"$ni_t^2$",
     "release_pre2": r"$d_{t-1}^2$",
     "sto_diff": r"$\Delta s_{t-1}$",
-    "release_roll7": r"$\overline{s}_{t-1}^7$",
+    "release_roll7": r"$\overline{d}_{t-1}^7$",
     "inflow_roll7": r"$\overline{ni}_{t}^7$",
     "storage_x_inflow": r"$s_{t-1} \times ni_t$",
 }
