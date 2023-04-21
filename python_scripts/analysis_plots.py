@@ -1174,8 +1174,10 @@ def plot_experimental_dset_nse_decomp():
     fig, axes = plt.subplots(
         3,
         6,
-        sharex="col",
+        sharex=False,
         sharey=True,
+        # sharex="col",
+        # sharey=True,
         figsize=(width, height),
     )
     label_args = [
@@ -1214,23 +1216,32 @@ def plot_experimental_dset_nse_decomp():
         axes[1].set_title(title, pad=9)
     fig.align_xlabels()
     fig.align_ylabels()
-    plt.subplots_adjust(
+    fig.subplots_adjust(
         top=0.958,
         bottom=0.069,
         left=0.047,
         right=0.985,
-        hspace=0.15,
+        hspace=0.20,
         wspace=0.05,
     )
-    plt.savefig(
-        os.path.expanduser(
-            "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
-            "delta_nnse_decomp.svg",
-        ),
-        format="svg",
-        dpi=1200,
-        bbox_inches="tight",
-    )
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
+    #         "delta_nnse_decomp.svg",
+    #     ),
+    #     format="svg",
+    #     dpi=1200,
+    #     bbox_inches="tight",
+    # )
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         "~/projects/ETD/Chapter-4/figs/"
+    #         "delta_nnse_decomp.png",
+    #     ),
+    #     format="png",
+    #     dpi=500,
+    #     bbox_inches="tight",
+    # )
     plt.show()
 
 
@@ -1310,7 +1321,15 @@ def plot_nse_decomp_experiment(model_results, axes=None):
         "corr": "Pearson r",
     }
 
-    diff = True
+    if os.environ.get("DIFF"):
+        diff = bool(int(os.environ.get("DIFF")))
+    else:
+        diff = True
+
+    if diff:
+        leg_ax = axes[2]
+    else:
+        leg_fig, leg_ax = plt.subplots(1, 1)
 
     for ax, variable in zip(axes, ["alpha", "beta", "corr"]):
         if diff:
@@ -1351,7 +1370,6 @@ def plot_nse_decomp_experiment(model_results, axes=None):
                 label="Testing Reservoir (Opt)",
                 c=style_colors[1],
                 edgecolor="k",
-                marker="X",
                 linewidths=0.5,
                 zorder=10,
             )
@@ -1361,6 +1379,7 @@ def plot_nse_decomp_experiment(model_results, axes=None):
                 label="Training Reservoir",
                 c=style_colors[0],
                 edgecolor="k",
+                marker="X",
                 linewidths=0.5,
             )
             ax.scatter(
@@ -1374,6 +1393,9 @@ def plot_nse_decomp_experiment(model_results, axes=None):
                 zorder=10,
             )
 
+            ax.axhline(train_df["nnse"].mean(), color=style_colors[0], linestyle="--")
+            ax.axhline(test_df["nnse"].mean(), color=style_colors[1], linestyle="--")
+
             ax.set_xlabel(labels[variable])
             ax.set_ylabel("nNSE")
 
@@ -1383,7 +1405,7 @@ def plot_nse_decomp_experiment(model_results, axes=None):
                 ax.axvline(0, color="k", linestyle="--")
             ax.axhline(0.5, color="k", linestyle="--")
 
-        if ax == axes[2]:
+        if ax == leg_ax and diff:
             ax.legend(
                 loc="best",
                 frameon=True,
@@ -1392,6 +1414,22 @@ def plot_nse_decomp_experiment(model_results, axes=None):
                 handletextpad=0.2,
                 borderpad=0.2,
             )
+        else:
+            if ax == axes[0]:
+                leg_handles, leg_labels = ax.get_legend_handles_labels()
+                leg_ax.legend(
+                    leg_handles,
+                    leg_labels,
+                    loc="center",
+                    frameon=True,
+                    framealpha=1.0,
+                    handlelength=1,
+                    handleheight=1,
+                    handletextpad=0.4,
+                    borderpad=0.5,
+                    ncol=4,
+                )
+                leg_ax.axis("off")
 
 
 def transition_probabilities(model, model_data):
@@ -1475,7 +1513,7 @@ def plot_coef_bar(model_path, split=False):
                 zorder=2,
             )
             ax.set_title(f"Mode: {mode}")
-            ax.grid(True, color="k", linewidth=0.5, zorder=0)
+            # ax.grid(True, color="k", linewidth=0.5, zorder=0)
             ax.set_xlabel("Fitted Coef.")
             ax.set_xlim((-0.2682, 1.1442))
             ax.set_ylim((-0.65, 9.65))
@@ -1532,7 +1570,7 @@ def plot_coef_bar(model_path, split=False):
         for mode in coefs.columns:
             file = (
                 "/home/lucas/Dropbox/plrt-conus-figures/good_figures/coefs_large/"
-                f"mode_{mode}.png"
+                f"wo_lines/mode_{mode}.png"
             )
             plot_coefs(coefs[[mode]], file)
     else:
@@ -1563,16 +1601,16 @@ def calc_variable_importance(model, model_data):
 def plot_experimental_leave_out_ratios():
     rts = {
         "upper": [
-            "TD6_MSS0.03_SM_meta_rts_0.2",
-            "TD6_MSS0.03_SM_meta_rts_0.4",
-            "TD6_MSS0.03_SM_meta_rts_0.6",
-            "TD6_MSS0.03_SM_meta_rts_0.8",
+            "TD6_MSS0.03_SM_meta_rts_0.2",  # 20% used for training
+            "TD6_MSS0.03_SM_meta_rts_0.4",  # 40% used for training
+            "TD6_MSS0.03_SM_meta_rts_0.6",  # 60% used for training
+            "TD6_MSS0.03_SM_meta_rts_0.8",  # 80% used for training
         ],
         "lower": [
-            "TD6_MSS0.03_SM_meta_rts_-0.2",
-            "TD6_MSS0.03_SM_meta_rts_-0.4",
-            "TD6_MSS0.03_SM_meta_rts_-0.6",
-            "TD6_MSS0.03_SM_meta_rts_-0.8",
+            "TD6_MSS0.03_SM_meta_rts_-0.8",  # 20% used for training
+            "TD6_MSS0.03_SM_meta_rts_-0.6",  # 40% used for training
+            "TD6_MSS0.03_SM_meta_rts_-0.4",  # 60% used for training
+            "TD6_MSS0.03_SM_meta_rts_-0.2",  # 80% used for training
         ],
     }
     max_sto = {
@@ -1583,10 +1621,10 @@ def plot_experimental_leave_out_ratios():
             "TD6_MSS0.03_SM_meta_max_sto_0.8",
         ],
         "lower": [
-            "TD6_MSS0.03_SM_meta_max_sto_-0.2",
-            "TD6_MSS0.03_SM_meta_max_sto_-0.4",
-            "TD6_MSS0.03_SM_meta_max_sto_-0.6",
             "TD6_MSS0.03_SM_meta_max_sto_-0.8",
+            "TD6_MSS0.03_SM_meta_max_sto_-0.6",
+            "TD6_MSS0.03_SM_meta_max_sto_-0.4",
+            "TD6_MSS0.03_SM_meta_max_sto_-0.2",
         ],
     }
     rel_inf_corr = {
@@ -1597,24 +1635,24 @@ def plot_experimental_leave_out_ratios():
             "TD6_MSS0.03_SM_meta_rel_inf_corr_0.8",
         ],
         "lower": [
-            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.2",
-            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.4",
-            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.6",
             "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.8",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.6",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.4",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.2",
         ],
     }
 
     graphs = [
-        rts["upper"],
-        rts["lower"],
-        max_sto["upper"],
-        max_sto["lower"],
-        rel_inf_corr["upper"],
-        rel_inf_corr["lower"],
+        rts["upper"][::-1],
+        rts["lower"][::-1],
+        max_sto["upper"][::-1],
+        max_sto["lower"][::-1],
+        rel_inf_corr["upper"][::-1],
+        rel_inf_corr["lower"][::-1],
     ]
 
     titles = [
-        r"Lower$RT$",
+        r"Lower $RT$",
         r"Upper $RT$",
         r"Lower $S_{max}$",
         r"Upper $S_{max}$",
@@ -1622,7 +1660,7 @@ def plot_experimental_leave_out_ratios():
         r"Upper $r(D_t, NI_t)$",
     ]
 
-    width = 12
+    width = 18
     height = 10
     fig, axes = plt.subplots(
         3,
@@ -1660,15 +1698,15 @@ def plot_experimental_leave_out_ratios():
         hspace=0.15,
         wspace=0.05,
     )
-    plt.savefig(
-        os.path.expanduser(
-            "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
-            "leave_out_ratio_test.svg",
-        ),
-        format="svg",
-        dpi=1200,
-        bbox_inches="tight",
-    )
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
+    #         "leave_out_ratio_test.svg",
+    #     ),
+    #     format="svg",
+    #     dpi=1200,
+    #     bbox_inches="tight",
+    # )
     plt.show()
 
 
@@ -1730,30 +1768,35 @@ def plot_experimental_leave_out_ratio(graph_paths, ax=None):
     #     hue="dset",
     #     ax=ax,
     # )
-    sns.boxplot(
-        data=scores,
-        y="NNSE",
-        x="ratio",
-        hue="dset",
-        ax=ax,
-        showfliers=False,
-    )
-    # sns.barplot(
+    # sns.boxplot(
     #     data=scores,
-    #     x="ratio",
     #     y="NNSE",
+    #     x="ratio",
     #     hue="dset",
     #     ax=ax,
+    #     showfliers=False,
     # )
+    sns.barplot(
+        data=scores,
+        x="ratio",
+        y="NNSE",
+        hue="dset",
+        ax=ax,
+        errorbar="sd",
+        width=0.8,
+        capsize=0.1,
+        saturation=0.6,
+        errwidth=1,
+    )
     ax.legend(title="")
-    ax.set_xlabel("Testing Ratio")
+    ax.set_xlabel("Training Fraction")
     ax.set_ylabel("nNSE")
 
 
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
     plt.style.use(["science", "nature"])
-    sns.set_context("paper", font_scale=1.2)
+    sns.set_context("notebook", font_scale=1.1)
     # mpl.rcParams["xtick.major.size"] = 8
     # mpl.rcParams["xtick.major.width"] = 1
     mpl.rcParams["xtick.minor.size"] = 0
@@ -1831,7 +1874,7 @@ if __name__ == "__main__":
     # plot_experimental_dset_sim_perf()
 
     # * plot experimental nse decomp
-    # plot_experimental_dset_nse_decomp()
+    plot_experimental_dset_nse_decomp()
 
     # * plot experimental ratio leave outs
-    plot_experimental_leave_out_ratios()
+    # plot_experimental_leave_out_ratios()
