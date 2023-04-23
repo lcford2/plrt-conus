@@ -160,6 +160,27 @@ def split_train_test_by_basin_meta_var(resers, meta, meta_var, threshold):
     return basin_train, basin_test
 
 
+def split_train_test_by_meta_var(resers, meta, meta_var, threshold):
+    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = res_huc2[res_huc2["res_id"].isin(resers)]
+    hucs = res_huc2["huc2_id"].unique()
+    {i: res_huc2[res_huc2["huc2_id"] == i]["res_id"].values for i in hucs}
+    if threshold < 0:
+        threshold = abs(threshold)
+        flip_test_train = True
+    else:
+        flip_test_train = False
+
+    cut_off = meta[meta_var].quantile(threshold)
+    train_res = meta[meta[meta_var] < cut_off].index
+    test_res = meta[meta[meta_var] >= cut_off].index
+    if flip_test_train:
+        temp_train_res = train_res.copy()
+        train_res = test_res
+        test_res = temp_train_res
+    return train_res, test_res
+
+
 def merge_mb_and_resops(df):
     mb_df = load_feather(config.get_dir("data") / "model_ready" / "mb_data.feather")
     mb_df = mb_df.rename(
@@ -292,7 +313,11 @@ def pipeline(args):
 
     np.random.seed(44)
     splitting_method = args.splitting_method
-    cache_file = f"./model_setup_files/test_train_{'_'.join(splitting_method)}.pickle"
+    all_conus = args.conus_split
+    conus_mod = "conus_" if all_conus else ""
+    cache_file = (
+        f"./model_setup_files/test_train_{conus_mod}{'_'.join(splitting_method)}.pickle"
+    )
     if os.path.exists(cache_file):
         basin_train, basin_test = load_pickle(cache_file)
     else:
@@ -302,19 +327,31 @@ def pipeline(args):
                 float(splitting_method[-1]),
             )
         else:
-            basin_train, basin_test = split_train_test_by_basin_meta_var(
-                reservoirs,
-                meta,
-                splitting_method[1],
-                float(splitting_method[-1]),
-            )
+            if all_conus:
+                basin_train, basin_test = split_train_test_by_meta_var(
+                    reservoirs,
+                    meta,
+                    splitting_method[1],
+                    float(splitting_method[-1]),
+                )
+            else:
+                basin_train, basin_test = split_train_test_by_basin_meta_var(
+                    reservoirs,
+                    meta,
+                    splitting_method[1],
+                    float(splitting_method[-1]),
+                )
         write_pickle((basin_train, basin_test), cache_file)
 
-    train_res, test_res = [], []
-    for resers in basin_train.values():
-        train_res.extend(resers)
-    for resers in basin_test.values():
-        test_res.extend(resers)
+    if not all_conus:
+        train_res, test_res = [], []
+        for resers in basin_train.values():
+            train_res.extend(resers)
+        for resers in basin_test.values():
+            test_res.extend(resers)
+    else:
+        train_res = basin_train
+        test_res = basin_test
 
     print(f"Number of training reservoirs: {len(train_res)}")
     print(f"Number of testing reservoirs: {len(test_res)}")
@@ -591,7 +628,8 @@ def make_output_paths(args):
     else:
         assim_mod = f"_{args.assim}" if args.assim else ""
         mss_mod = f"_MSS{args.mss:0.2f}"
-        sm_mod = f"_SM_{'_'.join(args.splitting_method)}"
+        conus_mod = "_conus" if args.conus_split else ""
+        sm_mod = f"_SM_{conus_mod}{'_'.join(args.splitting_method)}"
         from_store_mod = "_FROM_STORED" if args.load_model else ""
         foldername = f"TD{args.max_depth}{assim_mod}{mss_mod}{sm_mod}{from_store_mod}"
 
@@ -955,6 +993,11 @@ def parse_args(arg_list=None):
         help="How should the training and the testing split be split? "
         + "If len = 2, should be 'basin' 'proportion'. "
         + "If len = 3, should be 'meta' 'meta var' 'threshold'",
+    )
+    parser.add_argument(
+        "--conus-split",
+        action="store_true",
+        help="Indicate that splitting should occur for conus instead of per basin",
     )
     parser.add_argument(
         "--sim-all",
