@@ -60,6 +60,45 @@ def nnse(actual: calc_type, model: calc_type) -> float:
     return 1 / (2 - r2_score(actual, model))
 
 
+def bias(actual: calc_type, model: calc_type, percent=False) -> float:
+    if percent:
+        return 100 * (np.mean(model) - np.mean(actual)) / np.mean(actual)
+    else:
+        return np.mean(model) - np.mean(actual)
+
+
+def alpha_nse(actual: calc_type, model: calc_type) -> float:
+    """Calculate alpha NSE decomp from Gupta, Kling, Yilmaz, & Martinez (2009)
+    Measure of relative variability between simulated and observed data
+
+    $\alpha = \frac{\\sigma_{model}}{\\sigma_{actual}}$
+
+    Args:
+        actual (np.array | pd.Series): Array of actual values
+        model (np.array | pd.Series): Array of model values
+
+    Returns:
+        float: Alpha NSE
+    """
+    return np.std(model) / np.std(actual)
+
+
+def beta_nse(actual: calc_type, model: calc_type) -> float:
+    """Calculate beta NSE decomp from Gupta, Kling, Yilmaz, & Martinez (2009)
+    Bias normalized by standard deviation of observed data
+
+    $\beta = \frac{\\mu_{model} - \\mu_{actual}}{\\sigma_{actual}}$
+
+    Args:
+        actual (np.array | pd.Series): Array of actual values
+        model (np.array | pd.Series): Array of model values
+
+    Returns:
+        float: Beta NSE
+    """
+    return (np.mean(model) - np.mean(actual)) / np.std(actual)
+
+
 def get_nse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Series:
     """Get NSE for df.
 
@@ -164,6 +203,79 @@ def get_nrmse(
     return scores
 
 
+def get_bias(
+    df: pd.DataFrame,
+    actual: str,
+    model: str,
+    grouper=None,
+    percent=False,
+) -> pd.Series:
+    """Calculate bias between model and actual.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing modeled data
+        actual (str): Name of column of actual data
+        model (str): Name of column of modeled data
+        grouper (str|pd.Series, optional): How to group the dataset. Defaults to None.
+        percent (bool, optional): Indicate if percent bias should be calculated.
+            Defaults to False.
+
+    Returns:
+        pd.Series: Bias values
+    """
+    if grouper is not None:
+        scores = df.groupby(grouper).apply(
+            lambda x: bias(x[actual], x[model], percent=percent),
+        )
+        if percent:
+            scores.name = "pbias"
+        else:
+            scores.name = "bias"
+    else:
+        scores = bias(df[actual], df[model], percent=percent)
+    return scores
+
+
+def get_alpha_nse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Series:
+    """Calculate alpha nse component between model and actual.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing modeled data
+        actual (str): Name of column of actual data
+        model (str): Name of column of modeled data
+        grouper (str|pd.Series, optional): How to group the dataset. Defaults to None.
+
+    Returns:
+        pd.Series: Alpha NSE
+    """
+    if grouper is not None:
+        scores = df.groupby(grouper).apply(lambda x: alpha_nse(x[actual], x[model]))
+        scores.name = "alpha_nse"
+    else:
+        scores = alpha_nse(df[actual], df[model])
+    return scores
+
+
+def get_beta_nse(df: pd.DataFrame, actual: str, model: str, grouper=None) -> pd.Series:
+    """Calculate beta nse component between model and actual.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing modeled data
+        actual (str): Name of column of actual data
+        model (str): Name of column of modeled data
+        grouper (str|pd.Series, optional): How to group the dataset. Defaults to None.
+
+    Returns:
+        pd.Series: beta NSE
+    """
+    if grouper is not None:
+        scores = df.groupby(grouper).apply(lambda x: beta_nse(x[actual], x[model]))
+        scores.name = "beta_nse"
+    else:
+        scores = beta_nse(df[actual], df[model])
+    return scores
+
+
 def get_variance(values: pd.Series, grouper=None) -> pd.Series:
     """Get Variance of values.
 
@@ -200,14 +312,14 @@ def get_entropy(values: pd.Series, grouper=None, scale=False) -> pd.Series:
     """
     if grouper is not None:
         probs = values.groupby("res_id").apply(lambda x: x.value_counts() / x.count())
-        scores = probs.groupby(grouper).apply(entropy)
+        scores = probs.groupby(grouper).apply(entropy, base=2)
         if scale:
             ngroups = probs.index.get_level_values(1).unique().size
             scores = scores / np.log2(ngroups)
         scores.name = "entropy"
     else:
         probs = values.value_counts() / values.count()
-        scores = entropy(values)
+        scores = entropy(values, base=2)
         if scale:
             scores = scores / np.log2(probs.shape[0])
     return scores

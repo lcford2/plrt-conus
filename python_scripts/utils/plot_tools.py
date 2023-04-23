@@ -5,12 +5,35 @@ import numpy as np
 import pandas as pd
 
 _PRETTY_VAR_NAMES_MATH = {
+    "const": r"$\beta_0$",
     "rts": r"$RT$",
     "max_sto": r"$S_{max}$",
     "rel_inf_corr": r"$r(D, I)$",
     "storage_pre": r"$S_{t-1}$",
     "release_pre": r"$D_{t-1}$",
     "inflow": r"$NI_t$",
+    "inflow2": r"$NI^2$",
+    "release_pre2": r"$R_{t-1}^2$",
+    "sto_diff": r"$\Delta S_{t-1}$",
+    "release_roll7": r"$\overline{D}_{t-1}^7$",
+    "inflow_roll7": r"$\overline{NI}_{t}^7$",
+    "storage_x_inflow": r"$S_{t-1} \times NI_t$",
+}
+
+_PRETTY_VAR_NAMES_MATH_LOWER = {
+    "const": r"$\beta_0$",
+    "rts": r"$RT$",
+    "max_sto": r"$S_{max}$",
+    "rel_inf_corr": r"$r(S, NI)$",
+    "storage_pre": r"$s_{t-1}$",
+    "release_pre": r"$d_{t-1}$",
+    "inflow": r"$ni_t$",
+    "inflow2": r"$ni_t^2$",
+    "release_pre2": r"$d_{t-1}^2$",
+    "sto_diff": r"$\Delta s_{t-1}$",
+    "release_roll7": r"$\overline{d}_{t-1}^7$",
+    "inflow_roll7": r"$\overline{ni}_{t}^7$",
+    "storage_x_inflow": r"$s_{t-1} \times ni_t$",
 }
 
 _PRETTY_VAR_NAMES = {
@@ -22,10 +45,26 @@ _PRETTY_VAR_NAMES = {
     "inflow": "Net Inflow",
 }
 
+VAR_ORDER = [
+    "const",
+    "storage_pre",
+    "release_pre",
+    "inflow",
+    "sto_diff",
+    "release_roll7",
+    "inflow_roll7",
+    "storage_x_inflow",
+    "inflow2",
+    "release_pre2",
+]
 
-def get_pretty_var_name(var: str, math=True):
+
+def get_pretty_var_name(var: str, math=True, lower=False):
     if math:
-        return _PRETTY_VAR_NAMES_MATH.get(var, var)
+        if lower:
+            return _PRETTY_VAR_NAMES_MATH_LOWER.get(var, var)
+        else:
+            return _PRETTY_VAR_NAMES_MATH.get(var, var)
     else:
         return _PRETTY_VAR_NAMES.get(var, var)
 

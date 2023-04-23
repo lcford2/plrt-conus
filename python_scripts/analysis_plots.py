@@ -25,11 +25,22 @@ from parameter_sweep_analysis import (
     load_model_results,
     setup_map,
 )
-from scipy.stats import zscore
+from scipy.stats import pearsonr, zscore
 from utils.config import config
 from utils.io import load_feather, load_pickle, write_feather, write_pickle
-from utils.metrics import get_entropy, get_nnse, get_nrmse
-from utils.plot_tools import custom_bar_chart, determine_grid_size, get_tick_years
+from utils.metrics import (
+    get_alpha_nse,
+    get_beta_nse,
+    get_entropy,
+    get_nnse,
+    get_nrmse,
+)
+from utils.plot_tools import (  # VAR_ORDER,
+    custom_bar_chart,
+    determine_grid_size,
+    get_pretty_var_name,
+    get_tick_years,
+)
 from utils.utils import format_equation
 
 # plt.rcParams["svg.fonttype"] = "none"
@@ -205,7 +216,11 @@ def get_coefficient_dataframe(model, model_data):
     # maps them to their sorted index + 1
     group_map = {j: i + 1 for i, j in enumerate(groups_uniq)}
     groups = groups.apply(group_map.get)
-    param_df = pd.DataFrame.from_records(params, columns=feats, index=groups.index)
+    param_df = pd.DataFrame.from_records(
+        params,
+        columns=feats,
+        index=groups.index,
+    )
     param_df["group"] = groups
     out_param_df = param_df.groupby("group").mean()
     print(out_param_df.to_markdown(floatfmt=".3f"))
@@ -244,7 +259,9 @@ def get_basin_op_mode_breakdown():
     res_op_groups = load_feather(
         config.get_dir("agg_results") / "best_model_op_groups.feather",
     )
-    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather",
+    )
     res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
     res_huc2 = res_huc2.set_index("res_id")
     res_huc2 = res_huc2.loc[res_op_groups["res_id"]]
@@ -301,8 +318,16 @@ def get_res_seasonal_operations(model, model_data, op_group):
 def plot_seasonal_operations(model, model_data, polar=False):
     large = get_res_seasonal_operations(model, model_data, "Large")
     very_large = get_res_seasonal_operations(model, model_data, "Very Large")
-    med_mid_rt = get_res_seasonal_operations(model, model_data, "Medium, Mid RT")
-    med_high_rt = get_res_seasonal_operations(model, model_data, "Medium, High RT")
+    med_mid_rt = get_res_seasonal_operations(
+        model,
+        model_data,
+        "Medium, Mid RT",
+    )
+    med_high_rt = get_res_seasonal_operations(
+        model,
+        model_data,
+        "Medium, High RT",
+    )
     sml_mid_rt = get_res_seasonal_operations(model, model_data, "Small, Mid RT")
 
     fig, axes = plt.subplots(
@@ -310,7 +335,7 @@ def plot_seasonal_operations(model, model_data, polar=False):
         3,
         sharex=False,
         sharey=True,
-        figsize=(12, 8),
+        figsize=(16, 10),
         subplot_kw={"projection": "polar"} if polar else None,
     )
     axes = axes.flatten()
@@ -348,7 +373,7 @@ def plot_seasonal_operations(model, model_data, polar=False):
             )
             ax.set_title(title)
             ax.set_xticks(range(0, 12))
-            ax.set_xticklabels(calendar.month_abbr[1:])
+            ax.set_xticklabels(calendar.month_abbr[1:], rotation=90)
             ax.tick_params(
                 axis="both",
                 which="minor",
@@ -392,14 +417,29 @@ def plot_seasonal_operations(model, model_data, polar=False):
         loc="center",
         frameon=True,
     )
-
+    plt.subplots_adjust(
+        top=0.90,
+        bottom=0.1,
+        left=0.068,
+        right=0.989,
+        hspace=0.318,
+        wspace=0.051,
+    )
+    plt.savefig(
+        "/home/lucas/Dropbox/plrt-conus-figures/good_figures/op_group_analysis/"
+        "seasonal_bar_charts/all_groups_seasonal_percentages.png",
+        dpi=450,
+        bbox_inches="tight",
+    )
     plt.show()
 
 
 def plot_basin_specific_seasonal_operations(model, model_data, op_group):
     props = get_res_seasonal_operations(model, model_data, op_group)
     resers = props["res_id"].unique()
-    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather",
+    )
     res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
     res_huc2 = res_huc2.set_index("res_id")
     res_huc2 = res_huc2.loc[resers]
@@ -453,7 +493,9 @@ def plot_reservoir_most_likely_group_maps(model, model_data, op_group):
     resers = props["res_id"].unique()
     groups = props["group"].unique()
 
-    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather",
+    )
     res_huc2["huc2_id"] = [f"{i:02d}" for i in res_huc2["huc2_id"]]
     res_huc2 = res_huc2.set_index("res_id")
     res_huc2 = res_huc2.loc[resers]
@@ -822,7 +864,9 @@ def plot_basin_group_entropy(
         resers = op_groups["res_id"]
     groups = groups.loc[pd.IndexSlice[resers, :]]
 
-    res_huc2 = load_feather(config.get_dir("spatial_data") / "updated_res_huc2.feather")
+    res_huc2 = load_feather(
+        config.get_dir("spatial_data") / "updated_res_huc2.feather",
+    )
     res_huc2 = res_huc2.set_index("res_id")
 
     # get name of wbd files
@@ -839,6 +883,15 @@ def plot_basin_group_entropy(
     res_huc2 = res_huc2.loc[resers]
     res_huc2["entropy"] = scores
 
+    print(
+        (
+            res_huc2.groupby("huc2_id").max() - res_huc2.groupby("huc2_id").min()
+        ).sort_values(by="entropy", ascending=False),
+    )
+    from IPython import embed as II
+
+    II()
+    return
     scores = res_huc2.groupby("huc2_id").mean()
 
     # max_score = scores["entropy"].max()
@@ -847,8 +900,8 @@ def plot_basin_group_entropy(
     # * doing the above for each group gives the following full bounds
     if scale:
         # * if scaling by log2(k)
-        min_score = 0.15993214259879698
-        max_score = 0.6384038760490894
+        min_score = 0.23073330900603095
+        max_score = 0.9210221060603138
     else:
         min_score = 0.4134185912778788
         max_score = 1.6364994773122774
@@ -873,16 +926,7 @@ def plot_basin_group_entropy(
         53.382373,
     )
 
-    # fig = plt.figure()
-    # gs = mgridspec.GridSpec(1, 2, figure=fig, width_ratios=[20, 1])
-    # ax = fig.add_subplot(gs[0, 0])
-    # cbar_ax = fig.add_subplot(gs[:, 1])
-
-    # gs = mgridspec.GridSpec(2, 1, figure=fig, height_ratios=[20, 1])
-    # ax = fig.add_subplot(gs[0, 0])
-    # cbar_ax = fig.add_subplot(gs[1, :])
-    fig, ax = plt.subplots(1, 1)
-    cbar_fig, cbar_ax = plt.subplots(1, 1)
+    fig, ax = plt.subplots(1, 1, figsize=(12, 10))
     ax.tick_params(
         axis="both",
         which="minor",
@@ -891,7 +935,11 @@ def plot_basin_group_entropy(
         top=False,
         right=False,
     )
-    m = setup_map(coords=[west, south, east, north], other_bound=other_bounds, ax=ax)
+    m = setup_map(
+        coords=[west, south, east, north],
+        other_bound=other_bounds,
+        ax=ax,
+    )
     maps = [m]
 
     if plot_res:
@@ -912,25 +960,51 @@ def plot_basin_group_entropy(
                 sizes=res_huc2.loc[resers, "entropy"].values * 50,
             )
     x, y = maps[0](-80, 51)
-    ax.text(x, y, op_group, fontsize=20, ha="center", va="center")
+    ax.text(x, y, op_group, fontsize=24, ha="center", va="center")
 
-    if scale:
-        label = r"Mean Operational Mode Entropy [\%]"
-    else:
-        label = "Mean Operational Mode Entropy  [bits]"
-    plt.colorbar(
-        ScalarMappable(norm=norm, cmap=cmap),
-        cax=cbar_ax,
-        orientation="horizontal",
-        label=label,
-        aspect=4,
-        shrink=0.8,
-        # format=lambda x, _: f"{x:.0%}"
+    # if scale:
+    #     label = r"Mean Operational Mode Entropy [%]"
+    # else:
+    #     label = "Mean Operational Mode Entropy  [bits]"
+    # cbar_fig, cbar_ax = plt.subplots(1, 1)
+    # plt.colorbar(
+    #     ScalarMappable(norm=norm, cmap=cmap),
+    #     cax=cbar_ax,
+    #     orientation="horizontal",
+    #     label=label,
+    #     aspect=4,
+    #     shrink=0.8,
+    #     format=lambda x, _: f"{x:.0%}"
+    # )
+    # plt.show()
+    file_name = {
+        "Small, Mid RT": "small_mid_rt.png",
+        "Medium, Mid RT": "medium_mid_rt.png",
+        "Medium, High RT": "medium_high_rt.png",
+        "Large": "large.png",
+        "Very Large": "very_large.png",
+    }[op_group]
+    outdir = os.path.expanduser(
+        "~/Dropbox/plrt-conus-figures/good_figures/op_group_analysis/"
+        "op_group_entropy_maps",
     )
-    plt.show()
+    if scale:
+        file_name = "scaled_" + file_name
+        output_file = f"{outdir}/scaled/{file_name}"
+    else:
+        output_file = f"{outdir}/raw/{file_name}"
+
+    plt.savefig(output_file, dpi=450, bbox_inches="tight")
 
 
 def plot_training_vs_testing_simul_perf(model_results, ax=None):
+    opt_model_results = load_model_results(
+        config.get_dir("results")
+        / "monthly_merged_data_set_minyr3"
+        / "TD6_MSS0.03_SM_basin_0.8",
+    )
+    opt_simmed = opt_model_results["simmed_data"]
+
     train_reservoirs = (
         model_results["train_data"].index.get_level_values("res_id").unique()
     )
@@ -939,8 +1013,14 @@ def plot_training_vs_testing_simul_perf(model_results, ax=None):
     )
     simmed_data = model_results["simmed_data"]
 
+    opt_nnse = get_nnse(opt_simmed, "actual", "model", "res_id")
+    opt_nrmse = get_nrmse(opt_simmed, "actual", "model", "res_id", "range")
+
     nnse = get_nnse(simmed_data, "actual", "model", "res_id")
     nrmse = get_nrmse(simmed_data, "actual", "model", "res_id", "range")
+
+    nnse -= opt_nnse
+    nrmse -= opt_nrmse
 
     dset = pd.Series("train", index=train_reservoirs)
     dset = pd.concat([dset, pd.Series("test", index=test_reservoirs)])
@@ -972,6 +1052,15 @@ def plot_training_vs_testing_simul_perf(model_results, ax=None):
         linewidths=0.5,
         zorder=10,
     )
+    ax.set_xlabel(r"$\Delta$ nNSE")
+    ax.set_ylabel(r"$\Delta$ nRMSE")
+    # ax.axhline(train_df["nRMSE"].mean())
+    # ax.axhline(test_df["nRMSE"].mean())
+    # ax.axvline(train_df["nNSE"].mean())
+    # ax.axvline(test_df["nNSE"].mean())
+    ax.axhline(0, color="k", linestyle="--")
+    ax.axvline(0, color="k", linestyle="--")
+
     # ax = sns.scatterplot(
     #     data=df,
     #     x="nNSE",
@@ -1010,7 +1099,13 @@ def plot_experimental_dset_sim_perf():
     ]
     width = 12
     height = 10
-    fig, axes = plt.subplots(3, 2, sharex=True, sharey=True, figsize=(width, height))
+    fig, axes = plt.subplots(
+        3,
+        2,
+        sharex=True,
+        sharey=True,
+        figsize=(width, height),
+    )
     label_args = [
         {"label_x": False, "label_y": True, "legend": True},
         {"label_x": False, "label_y": False, "legend": False},
@@ -1034,6 +1129,8 @@ def plot_experimental_dset_sim_perf():
         if not label_arg["legend"]:
             ax.get_legend().remove()
         ax.set_title(title)
+    fig.align_xlabels()
+    fig.align_ylabels()
     plt.subplots_adjust(
         top=0.7,
         bottom=0.11,
@@ -1042,15 +1139,297 @@ def plot_experimental_dset_sim_perf():
         hspace=0.15,
         wspace=0.05,
     )
-    plt.savefig(
-        os.path.expanduser(
-            "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
-            "nnse_vs_nrmse.svg",
-        ),
-        format="svg",
-        dpi=1200,
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
+    #         "nnse_vs_nrmse_diff.svg",
+    #     ),
+    #     format="svg",
+    #     dpi=1200,
+    #     bbox_inches="tight",
+    # )
+    plt.show()
+
+
+def plot_experimental_dset_nse_decomp():
+    model_paths = [
+        "TD6_MSS0.03_SM_meta_rts_0.8",
+        "TD6_MSS0.03_SM_meta_rts_-0.2",
+        "TD6_MSS0.03_SM_meta_max_sto_0.8",
+        "TD6_MSS0.03_SM_meta_max_sto_-0.2",
+        "TD6_MSS0.03_SM_meta_rel_inf_corr_0.8",
+        "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.2",
+    ]
+
+    titles = [
+        r"Upper 20\% $RT$",
+        r"Lower 20\% $RT$",
+        r"Upper 20\% $S_{max}$",
+        r"Lower 20\% $S_{max}$",
+        r"Upper 20\% $r(D_t, NI_t)$",
+        r"Lower 20\% $r(D_t, NI_t)$",
+    ]
+    width = 16
+    height = 10
+    fig, axes = plt.subplots(
+        3,
+        6,
+        sharex=False,
+        sharey=True,
+        # sharex="col",
+        # sharey=True,
+        figsize=(width, height),
     )
-    # plt.show()
+    label_args = [
+        {"label_x": False, "label_y": True, "legend": True},
+        {"label_x": False, "label_y": False, "legend": False},
+        {"label_x": False, "label_y": True, "legend": False},
+        {"label_x": False, "label_y": False, "legend": False},
+        {"label_x": True, "label_y": True, "legend": False},
+        {"label_x": True, "label_y": False, "legend": False},
+    ]
+    flat_axes = axes.flatten()
+    axes_iterator = [flat_axes[i : i + 3] for i in range(0, len(flat_axes), 3)]
+
+    plot_iterator = zip(model_paths, axes_iterator, titles, label_args)
+    for model_path, axes, title, label_arg in plot_iterator:
+        full_model_path = (
+            config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path
+        )
+        model_results = load_model_results(full_model_path)
+        plot_nse_decomp_experiment(model_results, axes=axes)
+        if not label_arg["label_x"]:
+            for ax in axes:
+                ax.set_xlabel("")
+        if not label_arg["label_y"]:
+            for ax in axes:
+                ax.set_ylabel("")
+        else:
+            for ax in axes[1:]:
+                ax.set_ylabel("")
+        if not label_arg["legend"]:
+            for ax in axes:
+                try:
+                    ax.get_legend().remove()
+                except AttributeError:
+                    pass
+        axes[1].set_title(title, pad=9)
+    fig.align_xlabels()
+    fig.align_ylabels()
+    fig.subplots_adjust(
+        top=0.958,
+        bottom=0.069,
+        left=0.047,
+        right=0.985,
+        hspace=0.20,
+        wspace=0.05,
+    )
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
+    #         "delta_nnse_decomp.svg",
+    #     ),
+    #     format="svg",
+    #     dpi=1200,
+    #     bbox_inches="tight",
+    # )
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         "~/projects/ETD/Chapter-4/figs/"
+    #         "delta_nnse_decomp.png",
+    #     ),
+    #     format="png",
+    #     dpi=500,
+    #     bbox_inches="tight",
+    # )
+    plt.show()
+
+
+def plot_nse_decomp_experiment(model_results, axes=None):
+    opt_model_results = load_model_results(
+        config.get_dir("results")
+        / "monthly_merged_data_set_minyr3"
+        / "TD6_MSS0.03_SM_basin_0.8",
+    )
+    opt_simmed = opt_model_results["simmed_data"]
+
+    train_reservoirs = (
+        model_results["train_data"].index.get_level_values("res_id").unique()
+    )
+    test_reservoirs = (
+        model_results["test_data"].index.get_level_values("res_id").unique()
+    )
+    simmed_data = model_results["simmed_data"]
+
+    opt_nnse = get_nnse(opt_simmed, "actual", "model", "res_id")
+    opt_alpha = get_alpha_nse(opt_simmed, "actual", "model", "res_id")
+    opt_beta = get_beta_nse(opt_simmed, "actual", "model", "res_id")
+    opt_corr = opt_simmed.groupby("res_id").apply(
+        lambda x: pearsonr(x["actual"], x["model"]).statistic,
+    )
+
+    nnse = get_nnse(simmed_data, "actual", "model", "res_id")
+    alpha = get_alpha_nse(simmed_data, "actual", "model", "res_id")
+    beta = get_beta_nse(simmed_data, "actual", "model", "res_id")
+    corr = simmed_data.groupby("res_id").apply(
+        lambda x: pearsonr(x["actual"], x["model"]).statistic,
+    )
+
+    dset = pd.Series("train", index=train_reservoirs)
+    dset = pd.concat([dset, pd.Series("test", index=test_reservoirs)])
+    metric_df_opt = pd.DataFrame.from_dict(
+        {
+            "nnse": opt_nnse,
+            "alpha": opt_alpha,
+            "beta": opt_beta,
+            "corr": opt_corr,
+            "Dataset": dset,
+        },
+    )
+    metric_df = pd.DataFrame.from_dict(
+        {
+            "nnse": nnse,
+            "alpha": alpha,
+            "beta": beta,
+            "corr": corr,
+            "Dataset": dset,
+        },
+    )
+    diff_df = pd.DataFrame.from_dict(
+        {
+            "nnse": nnse - opt_nnse,
+            "alpha": alpha - opt_alpha,
+            "beta": beta - opt_beta,
+            "corr": corr - opt_corr,
+            "Dataset": dset,
+        },
+    )
+    metric_df_opt = metric_df_opt.fillna("test")
+    metric_df = metric_df.fillna("test")
+
+    train_df_opt = metric_df_opt[metric_df_opt["Dataset"] == "train"]
+    test_df_opt = metric_df_opt[metric_df_opt["Dataset"] == "test"]
+    train_df = metric_df[metric_df["Dataset"] == "train"]
+    test_df = metric_df[metric_df["Dataset"] == "test"]
+    train_diff = diff_df[diff_df["Dataset"] == "train"]
+    test_diff = diff_df[diff_df["Dataset"] == "test"]
+    style_colors = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+
+    labels = {
+        "alpha": r"$\alpha$",
+        "beta": r"$\beta$",
+        "corr": "Pearson r",
+    }
+
+    if os.environ.get("DIFF"):
+        diff = bool(int(os.environ.get("DIFF")))
+    else:
+        diff = True
+
+    if diff:
+        leg_ax = axes[2]
+    else:
+        leg_fig, leg_ax = plt.subplots(1, 1)
+
+    for ax, variable in zip(axes, ["alpha", "beta", "corr"]):
+        if diff:
+            ax.scatter(
+                train_diff[variable],
+                train_diff["nnse"],
+                label="Training Reservoir",
+                c=style_colors[0],
+                edgecolor="k",
+                linewidths=0.5,
+            )
+            ax.scatter(
+                test_diff[variable],
+                test_diff["nnse"],
+                label="Testing Reservoir",
+                c=style_colors[1],
+                edgecolor="k",
+                marker="X",
+                linewidths=0.5,
+                zorder=10,
+            )
+            ax.axvline(0, color="k", linestyle="--")
+            ax.axhline(0, color="k", linestyle="--")
+            ax.set_xlabel(rf"$\Delta$ {labels[variable]}")
+            ax.set_ylabel(r"$\Delta$ nNSE")
+        else:
+            ax.scatter(
+                train_df_opt[variable],
+                train_df_opt["nnse"],
+                label="Training Reservoir (Opt)",
+                c=style_colors[0],
+                edgecolor="k",
+                linewidths=0.5,
+            )
+            ax.scatter(
+                test_df_opt[variable],
+                test_df_opt["nnse"],
+                label="Testing Reservoir (Opt)",
+                c=style_colors[1],
+                edgecolor="k",
+                linewidths=0.5,
+                zorder=10,
+            )
+            ax.scatter(
+                train_df[variable],
+                train_df["nnse"],
+                label="Training Reservoir",
+                c=style_colors[0],
+                edgecolor="k",
+                marker="X",
+                linewidths=0.5,
+            )
+            ax.scatter(
+                test_df[variable],
+                test_df["nnse"],
+                label="Testing Reservoir",
+                c=style_colors[1],
+                edgecolor="k",
+                marker="X",
+                linewidths=0.5,
+                zorder=10,
+            )
+
+            ax.axhline(train_df["nnse"].mean(), color=style_colors[0], linestyle="--")
+            ax.axhline(test_df["nnse"].mean(), color=style_colors[1], linestyle="--")
+
+            ax.set_xlabel(labels[variable])
+            ax.set_ylabel("nNSE")
+
+            if variable == "alpha":
+                ax.axvline(1, color="k", linestyle="--")
+            if variable == "beta":
+                ax.axvline(0, color="k", linestyle="--")
+            ax.axhline(0.5, color="k", linestyle="--")
+
+        if ax == leg_ax and diff:
+            ax.legend(
+                loc="best",
+                frameon=True,
+                framealpha=1.0,
+                handlelength=1,
+                handletextpad=0.2,
+                borderpad=0.2,
+            )
+        else:
+            if ax == axes[0]:
+                leg_handles, leg_labels = ax.get_legend_handles_labels()
+                leg_ax.legend(
+                    leg_handles,
+                    leg_labels,
+                    loc="center",
+                    frameon=True,
+                    framealpha=1.0,
+                    handlelength=1,
+                    handleheight=1,
+                    handletextpad=0.4,
+                    borderpad=0.5,
+                    ncol=4,
+                )
+                leg_ax.axis("off")
 
 
 def transition_probabilities(model, model_data):
@@ -1086,7 +1465,11 @@ def transition_probabilities(model, model_data):
     fig, axes = plt.subplots(2, 3, figsize=(12, 8))
     axes = axes.flatten()
     for group, ax in zip(TIME_VARYING_GROUPS, axes):
-        sns.heatmap(t_probs.loc[pd.IndexSlice[group]].unstack().T, ax=ax, annot=True)
+        sns.heatmap(
+            t_probs.loc[pd.IndexSlice[group]].unstack().T,
+            ax=ax,
+            annot=True,
+        )
         ax.set_title(group)
         ax.set_xlabel("")
         ax.set_ylabel("")
@@ -1094,13 +1477,329 @@ def transition_probabilities(model, model_data):
     plt.show()
 
 
+def plot_coef_bar(model_path, split=False):
+    coef_file = (
+        config.get_dir("results")
+        / "monthly_merged_data_set_minyr3"
+        / model_path
+        / "random_effects.csv"
+    )
+
+    coefs = pd.read_csv(coef_file, index_col=0).T
+
+    def plot_coefs(coefs, filename=None):
+        gs = determine_grid_size(coefs.shape[1])
+        coefs.index = [
+            get_pretty_var_name(i, math=True, lower=True) for i in coefs.index
+        ]
+        colors = dict(zip(coefs.index, sns.color_palette("muted")))
+
+        plot_order = [
+            get_pretty_var_name(i, math=True, lower=True) for i in coefs.index
+        ]
+
+        fig, axes = plt.subplots(*gs, sharex=True, sharey=True, figsize=(6, 8))
+        if hasattr(axes, "size"):
+            axes = axes.flatten()
+        else:
+            axes = [axes]
+
+        for mode, ax in zip(coefs.columns, axes):
+            pdf = coefs[mode]
+            pdf.loc[plot_order[::-1]].plot.barh(
+                ax=ax,
+                color=[colors[i] for i in pdf.index],
+                width=0.8,
+                zorder=2,
+            )
+            ax.set_title(f"Mode: {mode}")
+            # ax.grid(True, color="k", linewidth=0.5, zorder=0)
+            ax.set_xlabel("Fitted Coef.")
+            ax.set_xlim((-0.2682, 1.1442))
+            ax.set_ylim((-0.65, 9.65))
+
+        for ax in axes:
+            ax.tick_params(
+                axis="both",
+                which="minor",
+                left=False,
+                bottom=False,
+                top=False,
+                right=False,
+            )
+            ax.tick_params(
+                axis="both",
+                which="major",
+                top=False,
+                right=False,
+                labelbottom=True,
+            )
+
+        plt.subplots_adjust(
+            top=0.928,
+            bottom=0.111,
+            left=0.238,
+            right=0.951,
+            hspace=0.2,
+            wspace=0.2,
+        )
+        show = True
+        if filename:
+            plt.savefig(filename, dpi=300, bbox_inches="tight")
+            show = False
+        patches = [mpatch.Patch(color=c) for c in sns.color_palette("muted")]
+
+        leg_fig, leg_ax = plt.subplots(1, 1)
+        leg_ax.legend(
+            patches[::-1],
+            [i.get_text() for i in axes[0].get_yticklabels()[::-1]],
+            loc="center",
+            frameon=False,
+            ncol=5,
+        )
+        leg_ax.axis("off")
+        if show:
+            plt.show()
+        else:
+            plt.close(fig)
+            plt.close(leg_fig)
+
+    if split:
+        # for op_group, modes in OP_GROUPS.items():
+        #     plot_coefs(coefs[modes])
+        for mode in coefs.columns:
+            file = (
+                "/home/lucas/Dropbox/plrt-conus-figures/good_figures/coefs_large/"
+                f"wo_lines/mode_{mode}.png"
+            )
+            plot_coefs(coefs[[mode]], file)
+    else:
+        plot_coefs(coefs)
+
+
+def calc_variable_importance(model, model_data):
+    groups = get_all_res_groups(model, model_data)
+    coef_file = (
+        config.get_dir("results")
+        / "monthly_merged_data_set_minyr3"
+        / model_path
+        / "random_effects.csv"
+    )
+
+    coefs = pd.read_csv(coef_file, index_col=0).T
+
+    props = groups.value_counts() / groups.shape[0]
+
+    importance = (coefs * props).abs().max(axis=1)
+    importance = importance.sort_values(ascending=False)
+
+    from IPython import embed as II
+
+    II()
+
+
+def plot_experimental_leave_out_ratios():
+    rts = {
+        "upper": [
+            "TD6_MSS0.03_SM_meta_rts_0.2",  # 20% used for training
+            "TD6_MSS0.03_SM_meta_rts_0.4",  # 40% used for training
+            "TD6_MSS0.03_SM_meta_rts_0.6",  # 60% used for training
+            "TD6_MSS0.03_SM_meta_rts_0.8",  # 80% used for training
+        ],
+        "lower": [
+            "TD6_MSS0.03_SM_meta_rts_-0.8",  # 20% used for training
+            "TD6_MSS0.03_SM_meta_rts_-0.6",  # 40% used for training
+            "TD6_MSS0.03_SM_meta_rts_-0.4",  # 60% used for training
+            "TD6_MSS0.03_SM_meta_rts_-0.2",  # 80% used for training
+        ],
+    }
+    max_sto = {
+        "upper": [
+            "TD6_MSS0.03_SM_meta_max_sto_0.2",
+            "TD6_MSS0.03_SM_meta_max_sto_0.4",
+            "TD6_MSS0.03_SM_meta_max_sto_0.6",
+            "TD6_MSS0.03_SM_meta_max_sto_0.8",
+        ],
+        "lower": [
+            "TD6_MSS0.03_SM_meta_max_sto_-0.8",
+            "TD6_MSS0.03_SM_meta_max_sto_-0.6",
+            "TD6_MSS0.03_SM_meta_max_sto_-0.4",
+            "TD6_MSS0.03_SM_meta_max_sto_-0.2",
+        ],
+    }
+    rel_inf_corr = {
+        "upper": [
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_0.2",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_0.4",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_0.6",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_0.8",
+        ],
+        "lower": [
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.8",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.6",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.4",
+            "TD6_MSS0.03_SM_meta_rel_inf_corr_-0.2",
+        ],
+    }
+
+    graphs = [
+        rts["upper"][::-1],
+        rts["lower"][::-1],
+        max_sto["upper"][::-1],
+        max_sto["lower"][::-1],
+        rel_inf_corr["upper"][::-1],
+        rel_inf_corr["lower"][::-1],
+    ]
+
+    titles = [
+        r"Lower $RT$",
+        r"Upper $RT$",
+        r"Lower $S_{max}$",
+        r"Upper $S_{max}$",
+        r"Lower $r(D_t, NI_t)$",
+        r"Upper $r(D_t, NI_t)$",
+    ]
+
+    width = 18
+    height = 10
+    fig, axes = plt.subplots(
+        3,
+        2,
+        sharex="col",
+        sharey=True,
+        figsize=(width, height),
+    )
+    label_args = [
+        {"label_x": False, "label_y": True, "legend": True},
+        {"label_x": False, "label_y": False, "legend": False},
+        {"label_x": False, "label_y": True, "legend": False},
+        {"label_x": False, "label_y": False, "legend": False},
+        {"label_x": True, "label_y": True, "legend": False},
+        {"label_x": True, "label_y": False, "legend": False},
+    ]
+
+    plot_iterator = zip(graphs, axes.flatten(), titles, label_args)
+    for graph_paths, ax, title, label_arg in plot_iterator:
+        plot_experimental_leave_out_ratio(graph_paths, ax=ax)
+        if not label_arg["label_x"]:
+            ax.set_xlabel("")
+        if not label_arg["label_y"]:
+            ax.set_ylabel("")
+        if not label_arg["legend"]:
+            ax.get_legend().remove()
+        ax.set_title(title, pad=6)
+    fig.align_xlabels()
+    fig.align_ylabels()
+    plt.subplots_adjust(
+        top=0.958,
+        bottom=0.069,
+        left=0.047,
+        right=0.985,
+        hspace=0.15,
+        wspace=0.05,
+    )
+    # plt.savefig(
+    #     os.path.expanduser(
+    #         "~/Dropbox/plrt-conus-figures/good_figures/experimental_result/"
+    #         "leave_out_ratio_test.svg",
+    #     ),
+    #     format="svg",
+    #     dpi=1200,
+    #     bbox_inches="tight",
+    # )
+    plt.show()
+
+
+def plot_experimental_leave_out_ratio(graph_paths, ax=None):
+    """Plot the leaveout ratio for the experimental results."""
+    paths = [
+        config.get_dir("results") / "monthly_merged_data_set_minyr3" / model_path
+        for model_path in graph_paths
+    ]
+    results = [load_model_results(path) for path in paths]
+    # opt_model_results = load_model_results(
+    #     config.get_dir("results")
+    #     / "monthly_merged_data_set_minyr3"
+    #     / "TD6_MSS0.03_SM_basin_0.8",
+    # )
+    # opt_simmed = opt_model_results["simmed_data"]
+
+    scores = []
+    for model_results, ratio in zip(results, [0.2, 0.4, 0.6, 0.8]):
+        train_reservoirs = (
+            model_results["train_data"].index.get_level_values("res_id").unique()
+        )
+        test_reservoirs = (
+            model_results["test_data"].index.get_level_values("res_id").unique()
+        )
+        simmed_data = model_results["simmed_data"]
+        train_data = simmed_data.loc[
+            simmed_data.index.get_level_values("res_id").isin(train_reservoirs)
+        ]
+        test_data = simmed_data.loc[
+            simmed_data.index.get_level_values("res_id").isin(test_reservoirs)
+        ]
+        train_nnse = get_nnse(
+            train_data,
+            "actual",
+            "model",
+            "res_id",
+        )
+        test_nnse = get_nnse(
+            test_data,
+            "actual",
+            "model",
+            "res_id",
+        )
+        train_nnse = train_nnse.to_frame()
+        train_nnse["ratio"] = ratio
+        train_nnse["dset"] = "Training"
+        test_nnse = test_nnse.to_frame()
+        test_nnse["ratio"] = ratio
+        test_nnse["dset"] = "Testing"
+        rat_scores = pd.concat([train_nnse, test_nnse])
+        scores.append(rat_scores)
+
+    scores = pd.concat(scores)
+    # sns.lineplot(
+    #     data=scores,
+    #     y="NNSE",
+    #     x="ratio",
+    #     hue="dset",
+    #     ax=ax,
+    # )
+    # sns.boxplot(
+    #     data=scores,
+    #     y="NNSE",
+    #     x="ratio",
+    #     hue="dset",
+    #     ax=ax,
+    #     showfliers=False,
+    # )
+    sns.barplot(
+        data=scores,
+        x="ratio",
+        y="NNSE",
+        hue="dset",
+        ax=ax,
+        errorbar="sd",
+        width=0.8,
+        capsize=0.1,
+        saturation=0.6,
+        errwidth=1,
+    )
+    ax.legend(title="")
+    ax.set_xlabel("Training Fraction")
+    ax.set_ylabel("nNSE")
+
+
 if __name__ == "__main__":
     # sns.set_theme(context="notebook", palette="colorblind", font_scale=1.1)
-    # plt.style.use(["science", "nature"])
-    sns.set_context("talk", font_scale=1.1)
+    plt.style.use(["science", "nature"])
+    sns.set_context("notebook", font_scale=1.1)
     # mpl.rcParams["xtick.major.size"] = 8
     # mpl.rcParams["xtick.major.width"] = 1
-    # mpl.rcParams["xtick.minor.size"] = 4
+    mpl.rcParams["xtick.minor.size"] = 0
     # mpl.rcParams["xtick.minor.width"] = 1
     # mpl.rcParams["ytick.major.size"] = 8
     # mpl.rcParams["ytick.major.width"] = 1
@@ -1155,13 +1854,27 @@ if __name__ == "__main__":
     # plot_res_group_colored_timeseries(model_results, model, model_data)
 
     # * Plot basin group variance map
-    for group in TIME_VARYING_GROUPS:
-        print(f"\n{group}\n")
-        plot_basin_group_entropy(model, model_data, op_group=group, plot_res=False)
+    # for group in TIME_VARYING_GROUPS:
+    #     print(f"\n{group}\n")
+    #     plot_basin_group_entropy(model, model_data, op_group=group, plot_res=False)
 
     # * Plot training vs testing simul performance
     # plot_training_vs_testing_simul_perf(model_results)
-    # plot_experimental_dset_sim_perf()
 
     # * Transition probabilities
     # transition_probabilities(model, model_data)
+
+    # * Plot bar charts of coefficient values
+    # plot_coef_bar(model_path, split=True)
+
+    # * determine variable importance
+    # calc_variable_importance(model, model_data)
+
+    # * plot experimental results
+    # plot_experimental_dset_sim_perf()
+
+    # * plot experimental nse decomp
+    plot_experimental_dset_nse_decomp()
+
+    # * plot experimental ratio leave outs
+    # plot_experimental_leave_out_ratios()

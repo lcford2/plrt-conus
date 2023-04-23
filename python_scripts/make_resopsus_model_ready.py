@@ -1,5 +1,6 @@
 import datetime
 
+import numpy as np
 import pandas as pd
 from utils.config import config
 from utils.io import load_feather, write_feather, write_pickle
@@ -67,6 +68,23 @@ def make_model_ready_data(df):
         names=df.index.names,
     )
 
+    outlier_resers = {
+        "1020": ["release"],
+        "1042": ["release"],
+        "1170": ["release"],
+        "1777": ["storage"],
+        "572": ["release"],
+        "616": ["storage"],
+        "629": ["storage"],
+        "7214": ["release"],
+        "870": ["storage"],
+        "929": ["release"],
+    }
+    for res, fix_vars in outlier_resers.items():
+        for var in fix_vars:
+            df.loc[pd.IndexSlice[res, :], var] = fix_outliers(
+                df.loc[pd.IndexSlice[res, :], var],
+            )
     # get pre variables
     df[["storage_pre", "release_pre"]] = df.groupby("res_id")[
         ["storage", "release"]
@@ -181,6 +199,16 @@ def remove_duplicate_dates(df):
 
     df = df[~df.index.get_level_values(0).isin([i[0] for i in not_all_equal])]
     return df
+
+
+def fix_outliers(series):
+    q1 = series.quantile(0.25)
+    q3 = series.quantile(0.75)
+    iqr = q3 - q1
+    lb = q1 - 1.5 * iqr
+    ub = q3 + 1.5 * iqr
+    series[(series < lb) | (series > ub)] = np.nan
+    return series.interpolate()
 
 
 if __name__ == "__main__":
